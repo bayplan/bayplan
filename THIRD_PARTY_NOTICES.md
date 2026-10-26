@@ -324,7 +324,7 @@ Summary: 0BSD: 1, Apache-2.0: 2, BSD-3-Clause: 1, ISC: 9, MIT: 154, OFL-1.1: 1.
 | hasown | 2.0.4 | MIT |
 | html-parse-stringify | 4.0.1 | MIT |
 | https-proxy-agent | 5.0.1 | MIT |
-| i18next | 26.5.5 | MIT |
+| i18next | 26.5.6 | MIT |
 | i18next-browser-languagedetector | 8.2.1 | MIT |
 | i18next-resources-to-backend | 1.2.3 | MIT |
 | lucide-react | 1.61.0 | ISC |
@@ -336,7 +336,7 @@ Summary: 0BSD: 1, Apache-2.0: 2, BSD-3-Clause: 1, ISC: 9, MIT: 154, OFL-1.1: 1.
 | radix-ui | 1.8.1 | MIT |
 | react | 19.3.1 | MIT |
 | react-dom | 19.3.1 | MIT |
-| react-i18next | 17.1.2 | MIT |
+| react-i18next | 17.1.4 | MIT |
 | react-remove-scroll | 2.7.2 | MIT |
 | react-remove-scroll-bar | 2.3.8 | MIT |
 | react-router | 7.18.4 | MIT |
