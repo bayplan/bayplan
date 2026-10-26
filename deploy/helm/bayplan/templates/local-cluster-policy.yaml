@@ -1,0 +1,40 @@
+{{- /*
+Second guard of the local cluster: the API server rejects any write by the
+panel's impersonated identities (bayplan:* groups) in the panel's own
+namespace. The first guard lives in the backend (internal/k8s/protected.go)
+and also covers reads; this one covers what does not go through the panel but
+uses its identity. Only if the cluster has ValidatingAdmissionPolicy (v1, 1.30+).
+*/ -}}
+{{- if and .Values.localCluster.enabled (.Capabilities.APIVersions.Has "admissionregistration.k8s.io/v1/ValidatingAdmissionPolicy") }}
+---
+apiVersion: admissionregistration.k8s.io/v1
+kind: ValidatingAdmissionPolicy
+metadata:
+  name: bayplan-protect-own-namespace
+spec:
+  failurePolicy: Fail
+  matchConstraints:
+    resourceRules:
+      - apiGroups: ["*"]
+        apiVersions: ["*"]
+        operations: ["CREATE", "UPDATE", "DELETE", "CONNECT"]
+        resources: ["*"]
+  # Not a namespaceSelector: it does not filter cluster-scoped objects, and with
+  # it this policy denied every cluster-scoped write of the panel in the local
+  # cluster (cordon, creating namespaces, installing metrics-server).
+  # request.namespace is the object's namespace, or the name of a Namespace.
+  matchConditions:
+    - name: own-namespace
+      expression: {{ printf "has(request.namespace) && request.namespace == '%s'" .Release.Namespace | quote }}
+  validations:
+    - expression: "!request.userInfo.groups.exists(g, g.startsWith('bayplan:'))"
+      message: "Bayplan panel identities cannot modify the panel's own namespace"
+---
+apiVersion: admissionregistration.k8s.io/v1
+kind: ValidatingAdmissionPolicyBinding
+metadata:
+  name: bayplan-protect-own-namespace
+spec:
+  policyName: bayplan-protect-own-namespace
+  validationActions: [Deny]
+{{- end }}

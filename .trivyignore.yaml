@@ -1,0 +1,32 @@
+# Vulnerabilities accepted on purpose by the image scans (CI and the weekly
+# security-scan workflow). Every entry carries WHY, the binary it applies to
+# (paths) and an expiry date: when it expires the scan fails again, so an
+# exception cannot be forgotten.
+vulnerabilities:
+  # kubectl v1.37.1 is the latest release and was built upstream with Go
+  # 1.26.8 / x/net 0.57: there is nothing newer to pin. In the image it only
+  # runs the web shell's commands against the local proxy (internal/kubectl).
+  # Remove when kubectl v1.37.2 is out and bump KUBECTL_VERSION.
+  - id: CVE-2026-78669
+    paths: [usr/local/bin/kubectl]
+    statement: Upstream kubectl not rebuilt yet; latest release pinned.
+    expired_at: 2026-11-30
+  - id: CVE-2026-56851
+    paths: [usr/local/bin/kubectl]
+    statement: Upstream kubectl not rebuilt yet; latest release pinned.
+    expired_at: 2026-11-30
+  - id: CVE-2026-78667
+    paths: [usr/local/bin/kubectl]
+    statement: Upstream kubectl not rebuilt yet; latest release pinned.
+    expired_at: 2026-11-30
+  - id: CVE-2026-97031
+    paths: [usr/local/bin/kubectl]
+    statement: Upstream kubectl not rebuilt yet; latest release pinned.
+    expired_at: 2026-11-30
+  # Go crypto/x509 (fixed in 1.26.10/1.27.3). Our binaries and Trivy are
+  # rebuilt with the fix; kubectl v1.37.1 is still the latest release and was
+  # built with Go 1.26.8. Remove when kubectl v1.37.2 is out.
+  - id: CVE-2026-111943
+    paths: [usr/local/bin/kubectl]
+    statement: Upstream kubectl not rebuilt yet; latest release pinned.
+    expired_at: 2026-11-30

@@ -1,0 +1,40 @@
+# Build context of deploy/Containerfile and deploy/Containerfile.agent (both
+# use the repository root). They only COPY frontend/ and backend/: the frontend
+# is built inside the image and copied into backend/internal/web/dist, so the
+# host's builds and dependencies must never leak in (a stale or foreign
+# node_modules/dist would end up in the binary), and neither must any local
+# secret.
+.git
+.github
+.idea
+.vscode
+.claude
+.playwright-mcp
+bin/
+frontend/node_modules/
+frontend/dist/
+backend/internal/web/dist/*
+!backend/internal/web/dist/.gitkeep
+backend/server
+backend/agent
+backend/bayplan
+
+# Local secrets and environments
+.env
+.env.*
+**/.env
+**/*.pem
+**/*.key
+**/*.crt
+.setup-token.txt
+.dev-encryption-key
+.cluster.dev.*
+
+# Logs and coverage
+**/*.log
+**/*.log.*
+**/coverage*
+**/*.out
+**/*.cover
+**/*.coverprofile
+**/.DS_Store

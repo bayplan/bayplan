@@ -1,0 +1,8 @@
+blank_issues_enabled: false
+contact_links:
+  - name: Report a vulnerability
+    url: https://github.com/bayplan/bayplan/security/advisories/new
+    about: Privately, never in a public issue. See SECURITY.md.
+  - name: Documentation
+    url: https://github.com/bayplan/bayplan/blob/main/deploy/README.md
+    about: Installation, configuration and upgrades.

@@ -1,0 +1,249 @@
+@import "tailwindcss";
+
+/* Tailwind v4: class-based theme instead of prefers-color-scheme alone, so
+   the UI's light/dark switch can force the theme without depending on the
+   OS. The .dark class is added/removed on <html> (see src/lib/theme.ts). */
+@custom-variant dark (&:where(.dark, .dark *));
+
+/* Inter variable, only the latin and latin-ext subsets: fontsource's index.css
+   also declares cyrillic, greek and vietnamese, which no UI language (es/ca/en)
+   needs and which bloat the dist without the browser ever requesting them. */
+@font-face {
+  font-family: "Inter";
+  font-style: normal;
+  font-display: swap;
+  font-weight: 100 900;
+  src: url("@fontsource-variable/inter/files/inter-latin-ext-wght-normal.woff2") format("woff2-variations");
+  unicode-range: U+0100-02BA, U+02BD-02C5, U+02C7-02CC, U+02CE-02D7, U+02DD-02FF, U+0304, U+0308, U+0329,
+    U+1D00-1DBF, U+1E00-1E9F, U+1EF2-1EFF, U+2020, U+20A0-20AB, U+20AD-20C0, U+2113, U+2C60-2C7F, U+A720-A7FF;
+}
+@font-face {
+  font-family: "Inter";
+  font-style: normal;
+  font-display: swap;
+  font-weight: 100 900;
+  src: url("@fontsource-variable/inter/files/inter-latin-wght-normal.woff2") format("woff2-variations");
+  unicode-range: U+0000-00FF, U+0131, U+0152-0153, U+02BB-02BC, U+02C6, U+02DA, U+02DC, U+0304, U+0308,
+    U+0329, U+2000-206F, U+20AC, U+2122, U+2191, U+2193, U+2212, U+2215, U+FEFF, U+FFFD;
+}
+
+/* Design tokens. They live in @theme (not just :root) so they exist as
+   utilities (`bg-surface`, `text-fg-muted`, `border-border`, `rounded-md`…)
+   instead of `bg-[var(--color-surface)]`. Dark mode redefines the same
+   variables under `.dark`: the utilities reference `var(--color-*)`, so the
+   cascade does the rest.
+
+   Palette: neutral greys in both themes (a deliberate choice). Light: white
+   surfaces, pale grey sidebar, dark grey topbar, thin borders and a mid grey
+   as `primary` (buttons, links, active item, bars). Dark: greyscale with the
+   accent in light grey. Colour is reserved for states and for the logo's
+   orange (Container Orange: fill only, never text nor state). The kit
+   (docs/brand) is drawn in the topbar grey (#2f2f2f), which is `brand`; the
+   login panel uses that same grey. AA contrast measured for fg, fg-muted,
+   primary and the four states over canvas, surface and surface-hover in both
+   themes. */
+@theme {
+  /* AI assistant panel: a terminal, dark in BOTH themes so it reads as a
+     different surface from the app (not redefined under .dark). */
+  --color-term-bg: #252526;
+  --color-term-surface: #2f2f31;
+  --color-term-border: #3f3f42;
+  --color-term-fg: #e4e4e4;
+  --color-term-muted: #a6a6a6;
+  --color-term-prompt: #4ade80;
+  --color-term-error: #f87171;
+  --font-sans: "Inter", system-ui, "Segoe UI", Roboto, sans-serif;
+  --font-mono: ui-monospace, "SFMono-Regular", Consolas, monospace;
+
+  --color-canvas: #ffffff;
+  --color-surface: #ffffff;
+  --color-surface-raised: #ffffff;
+  --color-surface-hover: #f3f4f6;
+  --color-border: #e5e7eb;
+  --color-border-strong: #d1d5db;
+  --color-fg: #1f2937;
+  --color-fg-muted: #5f6b7a;
+  --color-fg-subtle: #6b7280;
+
+  --color-sidebar: #eef0f5;
+  /* Menu hover: over the sidebar grey, surface-hover was invisible. */
+  --color-sidebar-hover: #dde0e8;
+
+  --color-primary: #4b5563;
+  --color-primary-hover: #374151;
+  --color-primary-contrast: #ffffff;
+  --color-primary-soft: rgb(0 0 0 / 7%);
+
+  /* Colour of the 3×3 brand mark on a light background: the same topbar grey
+     the kit (docs/brand) is drawn in. */
+  --color-brand: #2f2f2f;
+  --color-brand-contrast: #f4f2ee;
+  --color-brand-muted: #b0b0b0;
+
+  --color-accent: #e8682a;
+  --color-accent-text: #b84a12;
+  --color-accent-soft: rgb(232 104 42 / 12%);
+
+  --color-link: #4b5563;
+
+  /* Dark grey topbar with the lockup in white; in dark mode, the same grey
+     as that theme's surfaces. */
+  --color-topbar: #2f2f2f;
+  --color-topbar-surface: rgb(255 255 255 / 8%);
+  --color-topbar-text: #ececec;
+  --color-topbar-muted: #b0b0b0;
+  --color-topbar-border: #444444;
+
+  --color-success: #1f7a4d;
+  --color-warning: #b45309;
+  --color-danger: #b91c1c;
+  --color-danger-hover: #991b1b;
+  --color-danger-contrast: #ffffff;
+  --color-info: #4b5563;
+
+  /* States as soft chips: pale background + text in the colour. */
+  --color-success-soft: #e8f7ee;
+  --color-warning-soft: #fef3c7;
+  --color-danger-soft: #fee2e2;
+  --color-info-soft: #f3f4f6;
+  --color-neutral-soft: #f3f4f6;
+
+  /* Two radii: md for controls, lg for cards, drawers and modals. */
+  --radius-sm: 0.25rem;
+  --radius-md: 0.375rem;
+  --radius-lg: 0.625rem;
+
+  /* Flat: the small shadow barely exists. */
+  --shadow-sm: 0 1px 2px rgb(17 24 39 / 5%);
+  --shadow-lg: 0 10px 30px rgb(17 24 39 / 16%);
+}
+
+/* Dark: pure neutral greys, the accent too (light grey over a dark
+   background); only the states and the logo's orange carry colour. */
+.dark {
+  --color-canvas: #161616;
+  --color-surface: #1e1e1e;
+  --color-surface-raised: #262626;
+  --color-surface-hover: #2a2a2a;
+  --color-border: #333333;
+  --color-border-strong: #4a4a4a;
+  --color-fg: #ececec;
+  --color-fg-muted: #a3a3a3;
+  --color-fg-subtle: #8a8a8a;
+
+  --color-sidebar: #1a1a1a;
+  --color-sidebar-hover: #2a2a2a;
+
+  --color-primary: #d4d4d4;
+  --color-primary-hover: #e5e5e5;
+  --color-primary-contrast: #161616;
+  --color-primary-soft: rgb(212 212 212 / 12%);
+
+  --color-brand: #2f2f2f;
+  --color-brand-contrast: #f4f2ee;
+  --color-brand-muted: #b0b0b0;
+
+  --color-accent: #f08a55;
+  --color-accent-text: #f08a55;
+  --color-accent-soft: rgb(240 138 85 / 14%);
+
+  --color-link: #d4d4d4;
+
+  --color-topbar: #1e1e1e;
+  --color-topbar-surface: rgb(255 255 255 / 6%);
+  --color-topbar-text: #ececec;
+  --color-topbar-muted: #a3a3a3;
+  --color-topbar-border: #333333;
+
+  --color-success: #4ade80;
+  --color-warning: #fbbf24;
+  --color-danger: #f87171;
+  --color-danger-hover: #fca5a5;
+  --color-danger-contrast: #161616;
+  --color-info: #a3a3a3;
+
+  --color-success-soft: rgb(74 222 128 / 15%);
+  --color-warning-soft: rgb(251 191 36 / 15%);
+  --color-danger-soft: rgb(248 113 113 / 15%);
+  --color-info-soft: rgb(163 163 163 / 12%);
+  --color-neutral-soft: rgb(163 163 163 / 12%);
+
+  --shadow-sm: 0 1px 2px rgb(0 0 0 / 30%);
+  --shadow-lg: 0 10px 30px rgb(0 0 0 / 50%);
+}
+
+/* Layers: a single order so a popover never ends up below a drawer nor a
+   modal below anything. Used as `z-(--z-popover)`. */
+:root {
+  --z-sticky: 10;
+  --z-topbar: 30;
+  --z-drawer-nav: 40;
+  --z-popover: 50;
+  --z-drawer: 60;
+  --z-modal: 70;
+  --z-toast: 80;
+  color-scheme: light;
+}
+
+.dark {
+  color-scheme: dark;
+}
+
+/* UI density (user preference, see hooks/usePreferences). Resolved with a
+   custom property and an attribute on <html> instead of a prop per component:
+   that way a new table honours it without doing anything. */
+:root {
+  --table-cell-py: 0.5rem;
+}
+
+:root[data-density='compact'] {
+  --table-cell-py: 0.25rem;
+}
+
+@layer base {
+  html,
+  body,
+  #root {
+    height: 100%;
+  }
+
+  body {
+    margin: 0;
+    background: var(--color-canvas);
+    color: var(--color-fg);
+    font-family: var(--font-sans);
+    -webkit-font-smoothing: antialiased;
+  }
+
+  /* Single focus ring for every interactive control, keyboard only
+     (`:focus-visible`): there was none before and 34 `outline-none` left
+     buttons and fields with no focus indication. Declared in base so any
+     new `<button>`/`<input>` gets it without remembering to. */
+  :where(a, button, input, select, textarea, summary, [tabindex]):focus-visible {
+    outline: 2px solid var(--color-primary);
+    outline-offset: 2px;
+  }
+  :where(input, select, textarea):focus-visible {
+    outline-offset: 0;
+  }
+
+  /* Default size of lucide icons: 16 px in buttons and navigation. An
+     explicit `h-3.5` still wins (it is a utility); this only avoids every
+     use having to repeat `h-4 w-4 shrink-0`. */
+  svg.lucide {
+    width: 1rem;
+    height: 1rem;
+    flex-shrink: 0;
+  }
+}
+
+/* Thin, quiet scrollbar for the side menu: the native one is a thick gray bar
+   that makes a navigation list look like a web form. */
+@utility scrollbar-thin {
+  scrollbar-width: thin;
+  scrollbar-color: transparent transparent;
+  &:hover,
+  &:focus-within {
+    scrollbar-color: var(--color-border-strong) transparent;
+  }
+}

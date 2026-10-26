@@ -1,0 +1,31 @@
+Bayplan deployed.
+{{- $fullname := include "bayplan.fullname" . }}
+
+1. Initial password of the "admin" user (you will be asked to change it on first login):
+
+   kubectl -n {{ .Release.Namespace }} get secret {{ $fullname }}-bootstrap -o go-template='{{"{{"}}.data.bootstrapPassword|base64decode{{"}}"}}{{"{{"}}"\n"{{"}}"}}'
+{{ if .Values.ingress.enabled }}
+2. Open {{ include "bayplan.publicURL" . }} and log in as admin.
+{{- if and .Values.ingress.tls.enabled (ne .Values.ingress.tls.source "secret") }}
+   The certificate is issued by cert-manager ({{ .Values.ingress.tls.source }}); until it is ready the
+   ingress serves the controller's default one:
+   kubectl -n {{ .Release.Namespace }} get certificate
+{{- end }}
+{{- if not .Values.trustedProxies }}
+
+   WARNING: trustedProxies is empty. Behind the ingress every client shares the controller's IP:
+   the audit log records that IP and one client exhausting the per-IP login limit throttles
+   everybody else's first login. Set it to the ingress controller's pod CIDR, e.g.:
+   helm upgrade {{ .Release.Name }} <chart> --reuse-values --set trustedProxies=10.42.0.0/16
+{{- end }}
+{{- else }}
+2. Without ingress: kubectl -n {{ .Release.Namespace }} port-forward svc/{{ $fullname }} 8080:{{ .Values.service.port }}
+   and open http://localhost:8080. Then configure the public URL in Settings → Server.
+{{- end }}
+
+3. Keep the Secret {{ $fullname }}-encryption APART from the database backup:
+   without the key the cluster credentials cannot be decrypted. Backups of Bayplan itself:
+   Administration → Backup targets.
+
+4. To connect clusters: Administration → Manage clusters → Agent (recommended).
+   The agent image is {{ include "bayplan.agentImage" . }} (changeable in Settings → Server).

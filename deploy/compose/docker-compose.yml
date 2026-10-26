@@ -1,0 +1,55 @@
+# Server deployment with Docker/Podman Compose. Equivalent to the Quadlet
+# units in deploy/, for those who do not use systemd.
+#
+#   cp ../env.example bayplan.env   # edit DATABASE_URL (same password as POSTGRES_PASSWORD) and ENCRYPTION_KEY_V1
+#   docker compose up -d
+#   docker compose logs bayplan | grep -A3 "First startup"   # /setup token
+#
+# The server serves plain HTTP on :8080: put a TLS reverse proxy in front
+# (Caddy, Traefik, nginx) and its network in TRUSTED_PROXIES.
+services:
+  # Same name as in Quadlet, so env.example's DATABASE_URL (@bayplan-db) works as is.
+  bayplan-db:
+    image: docker.io/library/postgres:18.6-alpine3.24
+    restart: unless-stopped
+    environment:
+      POSTGRES_DB: bayplan
+      POSTGRES_USER: bayplan
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?set POSTGRES_PASSWORD in .env or in the environment}
+    volumes:
+      - db-data:/var/lib/postgresql
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U bayplan -d bayplan"]
+      interval: 10s
+      retries: 5
+    networks: [internal]
+
+  bayplan:
+    # `latest` is always the last published release (never main). In production
+    # pin a version (BAYPLAN_IMAGE=ghcr.io/bayplan/bayplan:0.1 follows the 0.1.x
+    # patches) and change it on purpose: migrations only go forward.
+    image: ${BAYPLAN_IMAGE:-ghcr.io/bayplan/bayplan:latest}
+    restart: unless-stopped
+    depends_on:
+      bayplan-db:
+        condition: service_healthy
+    env_file: bayplan.env
+    ports:
+      - "${BAYPLAN_PORT:-8080}:8080"
+    read_only: true
+    tmpfs: [/tmp]
+    security_opt: [no-new-privileges:true]
+    healthcheck:
+      test: ["CMD", "wget", "-qO-", "http://localhost:8080/healthz"]
+      interval: 15s
+      retries: 3
+      start_period: 10s
+    networks: [internal, default]
+
+volumes:
+  db-data:
+
+networks:
+  internal:
+    internal: true
+  default: {}

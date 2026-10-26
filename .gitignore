@@ -1,0 +1,46 @@
+bin/
+backend/internal/web/dist/*
+!backend/internal/web/dist/.gitkeep
+
+# Node / frontend
+frontend/node_modules/
+frontend/dist/
+
+# Secrets and local environments — never commit
+.env
+.env.local
+*.pem
+*.key
+*.crt
+.setup-token.txt
+.dev-encryption-key
+.cluster.dev.env
+*.log
+
+# IDE
+.idea/
+.vscode/
+
+# OS
+.DS_Store
+.env.dev
+.playwright-mcp/
+*.log.*
+
+# Stray go build binaries
+backend/server
+backend/agent
+backend/bayplan
+
+# AI assistants: local guidance and settings, never published
+AGENTS.md
+CLAUDE.md
+CLAUDE.local.md
+.claude/
+.mcp.json
+.cursor/
+.cursorrules
+.codex/
+.aider*
+.windsurfrules
+GEMINI.md

@@ -1,0 +1,24 @@
+[Unit]
+Description=Bayplan - Postgres
+After=network-online.target
+
+[Container]
+Image=docker.io/library/postgres:18.6-alpine3.24
+ContainerName=bayplan-db
+Network=bayplan-internal.network
+# No PublishPort: Postgres is not reachable outside the internal network.
+Environment=POSTGRES_DB=bayplan
+Environment=POSTGRES_USER=bayplan
+Secret=bayplan_db_password,type=env,target=POSTGRES_PASSWORD
+Volume=bayplan-db-data.volume:/var/lib/postgresql
+User=70:70
+HealthCmd=pg_isready -U bayplan -d bayplan
+HealthInterval=10s
+HealthRetries=5
+HealthStartPeriod=20s
+
+[Service]
+Restart=always
+
+[Install]
+WantedBy=multi-user.target default.target

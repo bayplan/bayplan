@@ -1,0 +1,169 @@
+# Second line of defense for the RBAC in serviceaccount.yaml, enforced by the
+# API server itself (ValidatingAdmissionPolicy, Kubernetes 1.30+). They only
+# match requests made with the panel's impersonated groups (bayplan:*), so
+# nothing else in the cluster is affected. The panel applies the same rules
+# before writing (first line); these cover what does not go through that check:
+# the kubectl shell, Helm charts and GitOps.
+#
+# Direct connector: kubectl apply -f deploy/rbac/admission-policy.yaml
+# Agent connector: travels in the agent manifest. Chart: rendered for the local
+# cluster. On a cluster older than 1.30 the API server does not know the kind:
+# skip this file there (the panel's own check still applies).
+#
+# Copies: internal/agent/policy.yaml and deploy/helm/bayplan/files/
+# admission-policy.yaml (manifest_test.go fails if they drift apart).
+
+# 1. Nobody acting through the panel may run a workload as the panel's own
+#    ServiceAccounts nor mint a token for them. Their identity can impersonate
+#    the bayplan:* groups and any username: a pod running as bayplan-technical
+#    (direct connector) or bayplan-agent (agent) would hand an editor the panel's
+#    reach, outside its audit.
+apiVersion: admissionregistration.k8s.io/v1
+kind: ValidatingAdmissionPolicy
+metadata:
+  name: bayplan-protect-panel-identities
+spec:
+  failurePolicy: Fail
+  matchConstraints:
+    resourceRules:
+      - apiGroups: [""]
+        apiVersions: ["v1"]
+        operations: ["CREATE", "UPDATE"]
+        resources: ["pods", "secrets"]
+      - apiGroups: ["apps"]
+        apiVersions: ["v1"]
+        operations: ["CREATE", "UPDATE"]
+        resources: ["deployments", "statefulsets", "daemonsets", "replicasets"]
+      - apiGroups: ["batch"]
+        apiVersions: ["v1"]
+        operations: ["CREATE", "UPDATE"]
+        resources: ["jobs", "cronjobs"]
+  matchConditions:
+    - name: panel-identity
+      expression: "request.userInfo.groups.exists(g, g.startsWith('bayplan:'))"
+  variables:
+    - name: protectedSAs
+      expression: "['bayplan-technical', 'bayplan-agent']"
+    - name: podSpec
+      expression: >-
+        object.kind == 'Pod' ? object.spec :
+        object.kind == 'CronJob' ? object.spec.jobTemplate.spec.template.spec :
+        object.spec.template.spec
+  validations:
+    - expression: >-
+        object.kind == 'Secret' ||
+        !((has(variables.podSpec.serviceAccountName) && variables.podSpec.serviceAccountName in variables.protectedSAs) ||
+          (has(variables.podSpec.serviceAccount) && variables.podSpec.serviceAccount in variables.protectedSAs))
+      message: "Bayplan panel identities cannot run workloads as the panel's own ServiceAccounts"
+    - expression: >-
+        object.kind != 'Secret' || !has(object.type) || object.type != 'kubernetes.io/service-account-token' ||
+        !has(object.metadata.annotations) ||
+        !('kubernetes.io/service-account.name' in object.metadata.annotations) ||
+        !(object.metadata.annotations['kubernetes.io/service-account.name'] in variables.protectedSAs)
+      message: "Bayplan panel identities cannot mint tokens for the panel's own ServiceAccounts"
+---
+apiVersion: admissionregistration.k8s.io/v1
+kind: ValidatingAdmissionPolicyBinding
+metadata:
+  name: bayplan-protect-panel-identities
+spec:
+  policyName: bayplan-protect-panel-identities
+  validationActions: [Deny]
+---
+# 2. The agent's namespace (agent connector) is off limits for the panel's
+#    identities, like the panel's own namespace in the local cluster: its
+#    Secret holds the agent key and its Deployment is the agent.
+apiVersion: admissionregistration.k8s.io/v1
+kind: ValidatingAdmissionPolicy
+metadata:
+  name: bayplan-protect-agent-namespace
+spec:
+  failurePolicy: Fail
+  matchConstraints:
+    resourceRules:
+      - apiGroups: ["*"]
+        apiVersions: ["*"]
+        operations: ["CREATE", "UPDATE", "DELETE", "CONNECT"]
+        resources: ["*"]
+  # Not a namespaceSelector: it does not filter cluster-scoped objects, so it
+  # would also deny every ClusterRole, Node or Namespace write by the panel.
+  # request.namespace is the namespace of a namespaced object and the name of
+  # a Namespace object, which covers the namespace itself too.
+  matchConditions:
+    - name: agent-namespace
+      expression: "has(request.namespace) && request.namespace == 'bayplan-agent'"
+  validations:
+    - expression: "!request.userInfo.groups.exists(g, g.startsWith('bayplan:'))"
+      message: "Bayplan panel identities cannot modify the agent's namespace"
+---
+apiVersion: admissionregistration.k8s.io/v1
+kind: ValidatingAdmissionPolicyBinding
+metadata:
+  name: bayplan-protect-agent-namespace
+spec:
+  policyName: bayplan-protect-agent-namespace
+  validationActions: [Deny]
+---
+# 3. bayplan-impersonated-admin may create RBAC and APIServices only because
+#    installing metrics-server needs it (`create` takes no resourceNames).
+#    This narrows that to exactly the metrics-server objects, with their real
+#    roleRefs and subjects and read-only rules: otherwise a panel admin could
+#    bind a role to an identity of their own and keep access after losing it
+#    in the panel. Not rendered in cluster-admin mode, where bayplan:admins is
+#    cluster-admin on purpose.
+apiVersion: admissionregistration.k8s.io/v1
+kind: ValidatingAdmissionPolicy
+metadata:
+  name: bayplan-limit-admin-rbac
+spec:
+  failurePolicy: Fail
+  matchConstraints:
+    resourceRules:
+      - apiGroups: ["rbac.authorization.k8s.io"]
+        apiVersions: ["v1"]
+        operations: ["CREATE", "UPDATE"]
+        resources: ["roles", "rolebindings", "clusterroles", "clusterrolebindings"]
+      - apiGroups: ["apiregistration.k8s.io"]
+        apiVersions: ["v1"]
+        operations: ["CREATE", "UPDATE"]
+        resources: ["apiservices"]
+  matchConditions:
+    - name: panel-identity
+      expression: "request.userInfo.groups.exists(g, g.startsWith('bayplan:'))"
+  variables:
+    - name: metricsServerSubjects
+      expression: >-
+        has(object.subjects) && object.subjects.all(s, s.kind == 'ServiceAccount' &&
+        s.name == 'metrics-server' && has(s.namespace) && s.namespace == 'kube-system')
+    - name: readMetricsRules
+      expression: >-
+        !has(object.rules) || object.rules.all(r, !has(r.nonResourceURLs) &&
+        has(r.verbs) && r.verbs.all(v, v in ['get', 'list', 'watch']) &&
+        has(r.apiGroups) && r.apiGroups.all(g, g in ['', 'metrics.k8s.io']) &&
+        has(r.resources) && r.resources.all(x, x in ['pods', 'nodes', 'nodes/metrics']))
+  validations:
+    - expression: >-
+        object.kind == 'ClusterRole' ?
+          object.metadata.name in ['system:aggregated-metrics-reader', 'system:metrics-server'] &&
+          !has(object.aggregationRule) && variables.readMetricsRules :
+        object.kind == 'ClusterRoleBinding' ?
+          object.roleRef.kind == 'ClusterRole' && variables.metricsServerSubjects &&
+          ((object.metadata.name == 'system:metrics-server' && object.roleRef.name == 'system:metrics-server') ||
+           (object.metadata.name == 'metrics-server:system:auth-delegator' && object.roleRef.name == 'system:auth-delegator')) :
+        object.kind == 'RoleBinding' ?
+          object.metadata.name == 'metrics-server-auth-reader' && object.metadata.namespace == 'kube-system' &&
+          object.roleRef.kind == 'Role' && object.roleRef.name == 'extension-apiserver-authentication-reader' &&
+          variables.metricsServerSubjects :
+        object.kind == 'APIService' ?
+          object.metadata.name == 'v1beta1.metrics.k8s.io' && has(object.spec.service) &&
+          object.spec.service.name == 'metrics-server' && object.spec.service.namespace == 'kube-system' :
+        false
+      message: "Bayplan panel identities can only create the RBAC and APIService of metrics-server"
+---
+apiVersion: admissionregistration.k8s.io/v1
+kind: ValidatingAdmissionPolicyBinding
+metadata:
+  name: bayplan-limit-admin-rbac
+spec:
+  policyName: bayplan-limit-admin-rbac
+  validationActions: [Deny]

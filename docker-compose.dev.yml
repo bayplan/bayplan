@@ -1,0 +1,23 @@
+# Local development infra: Postgres only. The Go backend and the Vite frontend run on the
+# host (not dockerized in dev). NOT for production: see deploy/README.md (single
+# container, Helm chart, Compose or Podman Quadlet).
+services:
+  db:
+    image: postgres:18.6-alpine3.24
+    container_name: bayplan-db
+    environment:
+      POSTGRES_USER: bayplan
+      POSTGRES_PASSWORD: devlocal
+      POSTGRES_DB: bayplan
+    ports:
+      - "5432:5432"
+    volumes:
+      - bayplan-db-data:/var/lib/postgresql
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U bayplan -d bayplan"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+
+volumes:
+  bayplan-db-data:

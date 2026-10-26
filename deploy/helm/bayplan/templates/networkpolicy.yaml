@@ -1,0 +1,52 @@
+{{- if .Values.networkPolicy.enabled }}
+{{- $fullname := include "bayplan.fullname" . -}}
+# Opt-in: only the ingress controller's namespaces reach the server. It is
+# what makes trustedProxies safe with a broad range: a pod elsewhere in the
+# cluster can no longer connect and forge X-Forwarded-For.
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: {{ $fullname }}
+  labels:
+    {{- include "bayplan.labels" . | nindent 4 }}
+spec:
+  podSelector:
+    matchLabels:
+      {{- include "bayplan.selectorLabels" . | nindent 6 }}
+      app.kubernetes.io/component: server
+  policyTypes: [Ingress]
+  ingress:
+    - from:
+        {{- range .Values.networkPolicy.ingressNamespaces }}
+        - namespaceSelector:
+            matchLabels:
+              kubernetes.io/metadata.name: {{ . | quote }}
+        {{- end }}
+      ports:
+        - port: http
+          protocol: TCP
+{{- if .Values.postgresql.enabled }}
+---
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: {{ $fullname }}-db
+  labels:
+    {{- include "bayplan.labels" . | nindent 4 }}
+spec:
+  podSelector:
+    matchLabels:
+      {{- include "bayplan.selectorLabels" . | nindent 6 }}
+      app.kubernetes.io/component: database
+  policyTypes: [Ingress]
+  ingress:
+    - from:
+        - podSelector:
+            matchLabels:
+              {{- include "bayplan.selectorLabels" . | nindent 14 }}
+              app.kubernetes.io/component: server
+      ports:
+        - port: 5432
+          protocol: TCP
+{{- end }}
+{{- end }}

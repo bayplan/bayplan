@@ -1,0 +1,11 @@
+# gitleaks configuration (secret scanning of the history before publishing and in reviews).
+# Inherits the default rules and excludes the dummy values used by the redaction tests.
+[extend]
+useDefault = true
+
+[allowlist]
+description = "Dummy secrets from the redaction tests (Helm/YAML and the AI redaction)"
+paths = [
+  '''backend/internal/helm/redact_test\.go''',
+  '''backend/internal/ai/ai_test\.go''',
+]

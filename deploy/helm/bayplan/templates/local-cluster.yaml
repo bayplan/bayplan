@@ -1,0 +1,47 @@
+{{- /*
+Local cluster: the server registers the cluster running it as "this cluster"
+(LOCAL_CLUSTER=true) and connects with its own ServiceAccount, so here it is
+granted the same RBAC as the technical SA of deploy/rbac/serviceaccount.yaml
+(copy in files/rbac.yaml; a backend test checks they do not diverge). The
+ServiceAccount document is omitted: deployment.yaml creates the SA.
+*/ -}}
+{{- if .Values.localCluster.enabled }}
+{{- $fullname := include "bayplan.fullname" . }}
+{{- $rbac := .Files.Get "files/rbac.yaml" }}
+{{- $rbac = replace "name: bayplan-technical\n  namespace: kube-system" (printf "name: %s\n  namespace: %s" $fullname .Release.Namespace) $rbac }}
+{{- $rbac = replace "    name: bayplan-technical\n    namespace: kube-system" (printf "    name: %s\n    namespace: %s" $fullname .Release.Namespace) $rbac }}
+{{- range splitList "\n---\n" $rbac }}
+{{- if not (contains "\nkind: ServiceAccount\n" .) }}
+---
+{{ . }}
+{{- end }}
+{{- end }}
+{{- if eq .Values.localCluster.rbacMode "cluster-admin" }}
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRoleBinding
+metadata:
+  name: bayplan-cluster-admin
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: ClusterRole
+  name: cluster-admin
+subjects:
+  - kind: ServiceAccount
+    name: {{ $fullname }}
+    namespace: {{ .Release.Namespace }}
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRoleBinding
+metadata:
+  name: bayplan-impersonated-admin-cluster-admin
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: ClusterRole
+  name: cluster-admin
+subjects:
+  - kind: Group
+    name: "bayplan:admins"
+    apiGroup: rbac.authorization.k8s.io
+{{- end }}
+{{- end }}

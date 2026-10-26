@@ -1,0 +1,78 @@
+{{- /*
+cert-manager issuers for ingress.tls.source letsEncrypt or selfSigned (the
+two choices besides a Secret of your own).
+selfSigned is a CA, not a self-signed leaf: the agents pin the CA, so the
+ingress certificate can be renewed (or the host changed) without touching
+any agent.
+*/ -}}
+{{- if and .Values.ingress.enabled .Values.ingress.tls.enabled }}
+{{- $fullname := include "bayplan.fullname" . }}
+{{- $source := .Values.ingress.tls.source }}
+{{- if not (has $source (list "secret" "letsEncrypt" "selfSigned")) }}
+{{- fail "ingress.tls.source must be secret, letsEncrypt or selfSigned" }}
+{{- end }}
+{{- if eq $source "letsEncrypt" }}
+{{- if not .Values.letsEncrypt.email }}
+{{- fail "ingress.tls.source=letsEncrypt needs letsEncrypt.email" }}
+{{- end }}
+apiVersion: cert-manager.io/v1
+kind: Issuer
+metadata:
+  name: {{ $fullname }}-letsencrypt
+  labels:
+    {{- include "bayplan.labels" . | nindent 4 }}
+spec:
+  acme:
+    {{- if eq .Values.letsEncrypt.environment "staging" }}
+    server: https://acme-staging-v02.api.letsencrypt.org/directory
+    {{- else }}
+    server: https://acme-v02.api.letsencrypt.org/directory
+    {{- end }}
+    email: {{ .Values.letsEncrypt.email | quote }}
+    privateKeySecretRef:
+      name: {{ $fullname }}-letsencrypt
+    solvers:
+      - http01:
+          ingress:
+            {{- with .Values.ingress.className }}
+            ingressClassName: {{ . }}
+            {{- end }}
+{{- else if eq $source "selfSigned" }}
+apiVersion: cert-manager.io/v1
+kind: Issuer
+metadata:
+  name: {{ $fullname }}-selfsigned
+  labels:
+    {{- include "bayplan.labels" . | nindent 4 }}
+spec:
+  selfSigned: {}
+---
+apiVersion: cert-manager.io/v1
+kind: Certificate
+metadata:
+  name: {{ $fullname }}-ca
+  labels:
+    {{- include "bayplan.labels" . | nindent 4 }}
+spec:
+  isCA: true
+  commonName: {{ $fullname }}-ca
+  secretName: {{ $fullname }}-ca
+  duration: 87600h # 10 years: the agents pin it
+  privateKey:
+    algorithm: ECDSA
+    size: 256
+  issuerRef:
+    name: {{ $fullname }}-selfsigned
+    kind: Issuer
+---
+apiVersion: cert-manager.io/v1
+kind: Issuer
+metadata:
+  name: {{ $fullname }}-ca
+  labels:
+    {{- include "bayplan.labels" . | nindent 4 }}
+spec:
+  ca:
+    secretName: {{ $fullname }}-ca
+{{- end }}
+{{- end }}

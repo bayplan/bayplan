@@ -1,0 +1,178 @@
+{{- $fullname := include "bayplan.fullname" . -}}
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: {{ $fullname }}
+  labels:
+    {{- include "bayplan.labels" . | nindent 4 }}
+    app.kubernetes.io/component: server
+spec:
+  replicas: {{ .Values.replicaCount }}
+  strategy:
+    # A single instance per DB: there must never be two at once, not even during the rollout.
+    type: Recreate
+  # component: server keeps the bundled Postgres pod (component: database,
+  # same name/instance) out of this selector and out of the Service's.
+  selector:
+    matchLabels:
+      {{- include "bayplan.selectorLabels" . | nindent 6 }}
+      app.kubernetes.io/component: server
+  template:
+    metadata:
+      labels:
+        {{- include "bayplan.selectorLabels" . | nindent 8 }}
+        app.kubernetes.io/component: server
+      annotations:
+        {{- with .Values.podAnnotations }}
+        {{- toYaml . | nindent 8 }}
+        {{- end }}
+    spec:
+      {{- with .Values.imagePullSecrets }}
+      imagePullSecrets:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      serviceAccountName: {{ $fullname }}
+      securityContext:
+        runAsNonRoot: true
+        seccompProfile:
+          type: RuntimeDefault
+      containers:
+        - name: bayplan
+          image: {{ include "bayplan.image" . }}
+          imagePullPolicy: {{ .Values.image.pullPolicy }}
+          ports:
+            - name: http
+              containerPort: 8080
+          env:
+            - name: LISTEN_ADDR
+              value: ":8080"
+            - name: COOKIE_SECURE
+              value: {{ ternary "true" "false" (or .Values.ingress.tls.enabled (hasPrefix "https://" .Values.publicURL)) | quote }}
+            - name: TRUSTED_PROXIES
+              value: {{ .Values.trustedProxies | quote }}
+            - name: SESSION_IDLE_TIMEOUT
+              value: {{ .Values.session.idleTimeout | quote }}
+            - name: SESSION_ABSOLUTE_TIMEOUT
+              value: {{ .Values.session.absoluteTimeout | quote }}
+            - name: LOG_LEVEL
+              value: {{ .Values.logLevel | quote }}
+            {{- if or .Values.agentImage .Values.imageRegistry }}
+            - name: AGENT_IMAGE
+              value: {{ include "bayplan.agentImage" . | quote }}
+            {{- end }}
+            # Only read on the first start (empty users table).
+            - name: BOOTSTRAP_PASSWORD
+              valueFrom:
+                secretKeyRef:
+                  name: {{ $fullname }}-bootstrap
+                  key: bootstrapPassword
+                  optional: true
+            {{- if and .Values.ingress.enabled .Values.ingress.tls.enabled (eq .Values.ingress.tls.source "selfSigned") }}
+            # CA of the cert-manager self-signed chain: written into the agent
+            # manifests so that agents verify the ingress certificate.
+            - name: AGENT_CA_FILE
+              value: /etc/bayplan/agent-ca/ca.crt
+            {{- end }}
+            {{- if .Values.localCluster.enabled }}
+            - name: LOCAL_CLUSTER
+              value: "true"
+            - name: POD_NAMESPACE
+              valueFrom:
+                fieldRef:
+                  fieldPath: metadata.namespace
+            - name: LOCAL_CLUSTER_NAME
+              value: {{ .Values.localCluster.name | quote }}
+            {{- end }}
+            {{- with include "bayplan.publicURL" . }}
+            - name: PUBLIC_URL
+              value: {{ . | quote }}
+            {{- end }}
+            - name: ENCRYPTION_KEY_ACTIVE_ID
+              value: v1
+            - name: ENCRYPTION_KEY_V1
+              valueFrom:
+                secretKeyRef:
+                  name: {{ default (printf "%s-encryption" $fullname) .Values.existingEncryptionSecret }}
+                  key: encryptionKey
+            - name: DATABASE_URL
+              valueFrom:
+                secretKeyRef:
+                  name: {{ default (printf "%s-db" $fullname) .Values.existingDatabaseSecret }}
+                  key: databaseURL
+          livenessProbe:
+            httpGet:
+              path: /healthz
+              port: http
+            initialDelaySeconds: 10
+            periodSeconds: 15
+          readinessProbe:
+            httpGet:
+              path: /readyz
+              port: http
+            periodSeconds: 10
+          resources:
+            {{- toYaml .Values.resources | nindent 12 }}
+          securityContext:
+            allowPrivilegeEscalation: false
+            readOnlyRootFilesystem: true
+            capabilities:
+              drop: ["ALL"]
+          volumeMounts:
+            - name: tmp
+              mountPath: /tmp
+            {{- if and .Values.ingress.enabled .Values.ingress.tls.enabled (eq .Values.ingress.tls.source "selfSigned") }}
+            - name: agent-ca
+              mountPath: /etc/bayplan/agent-ca
+              readOnly: true
+            {{- end }}
+      volumes:
+        - name: tmp
+          emptyDir: {}
+        {{- if and .Values.ingress.enabled .Values.ingress.tls.enabled (eq .Values.ingress.tls.source "selfSigned") }}
+        # optional: cert-manager creates it after the pod may have started;
+        # the kubelet fills the volume in when it appears.
+        - name: agent-ca
+          secret:
+            secretName: {{ $fullname }}-ca
+            optional: true
+            items:
+              - key: ca.crt
+                path: ca.crt
+        {{- end }}
+      {{- with .Values.nodeSelector }}
+      nodeSelector:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      {{- with .Values.tolerations }}
+      tolerations:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      {{- with .Values.affinity }}
+      affinity:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+---
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: {{ $fullname }}
+  labels:
+    {{- include "bayplan.labels" . | nindent 4 }}
+# The token is only mounted if the server manages the local cluster with it.
+automountServiceAccountToken: {{ .Values.localCluster.enabled }}
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: {{ $fullname }}
+  labels:
+    {{- include "bayplan.labels" . | nindent 4 }}
+spec:
+  type: {{ .Values.service.type }}
+  ports:
+    - name: http
+      port: {{ .Values.service.port }}
+      targetPort: http
+  selector:
+    {{- include "bayplan.selectorLabels" . | nindent 4 }}
+    app.kubernetes.io/component: server

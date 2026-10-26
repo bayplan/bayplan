@@ -1,0 +1,12 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64.00 64.00" width="64" height="64" role="img" aria-label="Bayplan"><title>Bayplan</title>
+<rect width="64" height="64" rx="14" fill="#2F2F2F"/>
+<rect x="11.43" y="11.43" width="12.19" height="12.19" rx="2.29" fill="#F4F2EE"/>
+<rect x="25.90" y="11.43" width="12.19" height="12.19" rx="2.29" fill="#F4F2EE"/>
+<rect x="40.38" y="11.43" width="12.19" height="12.19" rx="2.29" fill="#F4F2EE" opacity="0.25"/>
+<rect x="11.43" y="25.90" width="12.19" height="12.19" rx="2.29" fill="#F4F2EE"/>
+<rect x="25.90" y="25.90" width="12.19" height="12.19" rx="2.29" fill="#F4F2EE"/>
+<rect x="40.38" y="25.90" width="12.19" height="12.19" rx="2.29" fill="#E8682A"/>
+<rect x="11.43" y="40.38" width="12.19" height="12.19" rx="2.29" fill="#F4F2EE"/>
+<rect x="25.90" y="40.38" width="12.19" height="12.19" rx="2.29" fill="#F4F2EE"/>
+<rect x="40.38" y="40.38" width="12.19" height="12.19" rx="2.29" fill="#F4F2EE"/>
+</svg>
