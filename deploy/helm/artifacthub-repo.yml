@@ -1,5 +1,4 @@
 # Artifact Hub repository metadata, published by CI at the root of the classic
-# Helm repository (gh-pages). After adding the repository on artifacthub.io,
-# uncomment repositoryID with the ID it shows to get the "Verified publisher"
-# badge.
-# repositoryID: 00000000-0000-0000-0000-000000000000
+# Helm repository (gh-pages). The ID is the one artifacthub.io assigned to the
+# repository: it is what grants the "Verified publisher" badge.
+repositoryID: f490f4d6-c227-446a-b001-5f88dd429117
