@@ -1,0 +1,70 @@
+# Weekly dependency updates. Minor and patch updates of each ecosystem come
+# grouped in a single PR (13 loose PRs a week end up unreviewed); major ones
+# come alone, because they are the ones that need reading the changelog.
+# Security updates are not grouped and do not wait for the week.
+#
+# Not covered here: the kubectl and Trivy versions pinned as ARGs in
+# deploy/Containerfile (Dependabot cannot read them). The weekly
+# security-scan workflow checks them and opens an issue.
+version: 2
+updates:
+  - package-ecosystem: github-actions
+    directory: /
+    schedule:
+      interval: weekly
+    groups:
+      actions:
+        update-types: [minor, patch]
+
+  - package-ecosystem: gomod
+    directory: /backend
+    schedule:
+      interval: weekly
+    groups:
+      go:
+        update-types: [minor, patch]
+    ignore:
+      # The k8s.io modules move together with kube-openapi and
+      # structured-merge-diff: one of them alone does not compile (kustomize
+      # 0.21.3 needs the structured-merge-diff of k8s 0.38). They go in the
+      # same PR, by hand or when the k8s minor version is bumped.
+      - dependency-name: sigs.k8s.io/kustomize/*
+        update-types: [version-update:semver-patch, version-update:semver-minor]
+
+  - package-ecosystem: npm
+    directory: /frontend
+    schedule:
+      interval: weekly
+    groups:
+      # react and react-dom must always carry the same version: a react-dom
+      # ahead of react fails at runtime, not at build time.
+      react:
+        patterns: [react, react-dom, "@types/react", "@types/react-dom"]
+      npm:
+        update-types: [minor, patch]
+        exclude-patterns: [react, react-dom, "@types/react", "@types/react-dom"]
+    ignore:
+      # The types follow the Node major of the build (deploy/Containerfile, CI),
+      # not the newest Node: they move together, by hand.
+      - dependency-name: "@types/node"
+        update-types: [version-update:semver-major]
+
+  # Base images of deploy/Containerfile and Containerfile.agent (Alpine, Go,
+  # Node): a new Alpine patch is how OS-level CVEs get fixed.
+  - package-ecosystem: docker
+    directories: [/deploy]
+    schedule:
+      interval: weekly
+    groups:
+      base-images:
+        update-types: [minor, patch]
+
+  # Postgres of Compose is an image too. Never its major version: a new
+  # major does not start on the old data directory (dump and restore).
+  - package-ecosystem: docker-compose
+    directory: /deploy/compose
+    schedule:
+      interval: weekly
+    ignore:
+      - dependency-name: "*postgres"
+        update-types: [version-update:semver-major]

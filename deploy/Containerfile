@@ -1,0 +1,88 @@
+# Multi-stage build: builds the frontend, embeds it in the Go binary and
+# produces a minimal, non-root final image. A single deployable artifact.
+#
+# Multi-arch (linux/amd64 and linux/arm64): the heavy stages run on the
+# BUILDER's platform ($BUILDPLATFORM) and cross-compile or download for
+# $TARGETARCH; only the short RUN of the final stage goes through emulation.
+#
+# Every base image and tool carries its EXACT version (1.26.9, not 1.26): a
+# floating tag builds with whatever the builder had cached (a release once came
+# out with Go 1.26.5 and its CVEs), and an exact one is what lets Dependabot
+# propose the bump as a reviewable PR. kubectl and Trivy are bumped through the
+# issue the weekly security-scan workflow opens.
+
+# --- Stage 1: frontend build ---
+FROM --platform=$BUILDPLATFORM docker.io/node:24.22.1-alpine3.24 AS frontend-build
+WORKDIR /src/frontend
+COPY frontend/package*.json ./
+RUN npm ci
+COPY frontend/ ./
+RUN npm run build
+
+# --- Stage 2: backend build (with the frontend already embedded) ---
+# The version must be at or ahead of the `go` directive in backend/go.mod (today
+# 1.26.0). With an older image, either the build fails or —worse— GOTOOLCHAIN
+# silently downloads the right toolchain from proxy.golang.org, so the image can
+# no longer be built without internet access. Keep it aligned with the Go
+# version used in CI.
+FROM --platform=$BUILDPLATFORM docker.io/golang:1.27.3-alpine3.24 AS backend-build
+WORKDIR /src/backend
+COPY backend/go.mod backend/go.sum ./
+RUN go mod download
+COPY backend/ ./
+RUN rm -rf internal/web/dist && mkdir internal/web/dist
+COPY --from=frontend-build /src/frontend/dist/. ./internal/web/dist/
+ARG VERSION=dev
+ARG TARGETARCH=amd64
+RUN CGO_ENABLED=0 GOOS=linux GOARCH=${TARGETARCH} go build -trimpath -ldflags="-s -w -X main.version=${VERSION}" -o /out/bayplan ./cmd/server
+
+# --- Stage 3: minimal final image ---
+# kubectl for the web shell (internal/kubectl). Pinned version and verified
+# checksum: the binary runs on the server with the user's identity.
+FROM --platform=$BUILDPLATFORM docker.io/alpine:3.24.3 AS kubectl-dl
+ARG TARGETARCH=amd64
+ARG KUBECTL_VERSION=v1.37.1
+RUN apk add --no-cache curl && \
+    curl -fsSLo /kubectl "https://dl.k8s.io/release/${KUBECTL_VERSION}/bin/linux/${TARGETARCH}/kubectl" && \
+    curl -fsSLo /kubectl.sha256 "https://dl.k8s.io/release/${KUBECTL_VERSION}/bin/linux/${TARGETARCH}/kubectl.sha256" && \
+    echo "$(cat /kubectl.sha256)  /kubectl" | sha256sum -c - && chmod 0755 /kubectl
+
+# Trivy for image scanning (internal/scan). Pinned version and checksum
+# verified against the release's checksums.txt.
+FROM --platform=$BUILDPLATFORM docker.io/alpine:3.24.3 AS trivy-dl
+ARG TARGETARCH=amd64
+ARG TRIVY_VERSION=0.76.1
+RUN apk add --no-cache curl && \
+    case "${TARGETARCH}" in amd64) TARCH=64bit ;; arm64) TARCH=ARM64 ;; *) echo "unsupported arch" && exit 1 ;; esac && \
+    curl -fsSLo /trivy.tgz "https://github.com/aquasecurity/trivy/releases/download/v${TRIVY_VERSION}/trivy_${TRIVY_VERSION}_Linux-${TARCH}.tar.gz" && \
+    curl -fsSLo /checksums.txt "https://github.com/aquasecurity/trivy/releases/download/v${TRIVY_VERSION}/trivy_${TRIVY_VERSION}_checksums.txt" && \
+    grep "trivy_${TRIVY_VERSION}_Linux-${TARCH}.tar.gz" /checksums.txt | sed 's#  .*#  /trivy.tgz#' | sha256sum -c - && \
+    tar -xzf /trivy.tgz -C / trivy && chmod 0755 /trivy
+
+# Alpine 3.24 is supported until May 2028; bump it before then (3.20, the
+# previous base, went EOL in April 2026).
+FROM docker.io/alpine:3.24.3
+LABEL org.opencontainers.image.title="Bayplan" \
+      org.opencontainers.image.licenses="Apache-2.0" \
+      org.opencontainers.image.source="https://github.com/bayplan/bayplan"
+# postgresql18: the server for the all-in-one mode (no DATABASE_URL, data in
+# /data; internal/embeddedpg) and pg_dump/pg_restore for the backups of
+# Bayplan's own database, which with 18 can dump any server up to 18.
+RUN apk add --no-cache ca-certificates postgresql18 && \
+    addgroup -S -g 10001 bayplan && adduser -S -u 10001 -G bayplan bayplan && \
+    mkdir -p /data && chown 10001:10001 /data && chmod 0700 /data
+COPY --from=backend-build /out/bayplan /usr/local/bin/bayplan
+COPY --from=kubectl-dl /kubectl /usr/local/bin/kubectl
+COPY --from=trivy-dl /trivy /usr/local/bin/trivy
+# Numeric: with runAsNonRoot the kubelet refuses to start an image whose USER
+# is a name ("cannot verify user is non-root").
+USER 10001:10001
+# All-in-one data (embedded database, generated key, self-signed CA). Declared
+# so that a `docker run` without -v still keeps it in an anonymous volume
+# instead of the container layer; the chart and Compose with an external
+# database never write here.
+VOLUME /data
+# 8080 plain HTTP (behind a proxy/ingress; with built-in HTTPS on it only
+# redirects), 8443 HTTPS in all-in-one mode.
+EXPOSE 8080 8443
+ENTRYPOINT ["/usr/local/bin/bayplan"]

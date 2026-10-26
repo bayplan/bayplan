@@ -1,0 +1,415 @@
+# CI (GitHub Actions): lint, tests, secret scanning (gitleaks), the third-party
+# notices check and known-vulnerability checks on every push/PR; images on main
+# and tags and the chart on tags, to GHCR, only if the images scan
+# clean. The weekly security-scan workflow covers the CVEs published after a
+# release.
+name: ci
+
+on:
+  push:
+    branches: [main]
+    tags: ["v*"]
+  pull_request:
+
+# Read-only by default; the jobs that publish ask for more themselves.
+permissions:
+  contents: read
+
+jobs:
+  backend:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+      # The latest 1.27 patch, not the go.mod minimum: govulncheck reports the
+      # standard library of the Go it runs with.
+      - uses: actions/setup-go@v7
+        with:
+          go-version: "1.27.x"
+          check-latest: true
+          cache-dependency-path: backend/go.sum
+      # The built frontend is embedded (go:embed all:dist) and is not in git:
+      # only backend/internal/web/dist/.gitkeep is, which is enough for vet and
+      # tests (the handler serves a placeholder page). Running them on the
+      # bare checkout is what proves a fresh clone builds; the real image builds
+      # the frontend in the Containerfile.
+      - run: test -z "$(gofmt -l .)" || { gofmt -l .; exit 1; }
+        working-directory: backend
+      - run: go vet ./...
+        working-directory: backend
+      - run: go test ./...
+        working-directory: backend
+      # Fails only on vulnerabilities the code actually reaches (call graph),
+      # not on every module that is merely present.
+      - run: go run golang.org/x/vuln/cmd/govulncheck@v1.9.0 ./...
+        working-directory: backend
+
+  frontend:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-node@v7
+        with:
+          node-version: 24
+          cache: npm
+          cache-dependency-path: frontend/package-lock.json
+      - run: npm ci
+        working-directory: frontend
+      # Production dependencies only (what ends up in the binary), from high up.
+      - run: npm audit --omit=dev --audit-level=high
+        working-directory: frontend
+      - run: npm run lint
+        working-directory: frontend
+      - run: npm run build
+        working-directory: frontend
+
+  third-party:
+    # THIRD_PARTY_NOTICES.md is generated (deploy/third-party-notices.sh) and
+    # ships with every release: fail if a dependency change did not regenerate
+    # it (`make third-party`).
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          persist-credentials: false
+      - uses: actions/setup-go@v7
+        with:
+          go-version: "1.27.x"
+          check-latest: true
+          cache-dependency-path: backend/go.sum
+      - uses: actions/setup-node@v7
+        with:
+          node-version: 24
+          cache: npm
+          cache-dependency-path: frontend/package-lock.json
+      - run: npm ci
+        working-directory: frontend
+      - run: go mod download
+        working-directory: backend
+      - run: ./deploy/third-party-notices.sh
+      - name: Notices up to date
+        run: |
+          git diff --exit-code THIRD_PARTY_NOTICES.md || {
+            echo "::error::THIRD_PARTY_NOTICES.md is stale: run make third-party and commit it"
+            exit 1
+          }
+
+  gitleaks:
+    # Secret scanning of the whole history with .gitleaks.toml. The binary is
+    # pinned with its checksum (not gitleaks-action, which needs a license for
+    # organizations) and runs with a read-only token and no stored credentials.
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          fetch-depth: 0
+          persist-credentials: false
+      - name: gitleaks
+        env:
+          GITLEAKS_VERSION: 8.30.1
+          GITLEAKS_SHA256: 551f6fc83ea457d62a0d98237cbad105af8d557003051f41f3e7ca7b3f2470eb
+        run: |
+          set -euo pipefail
+          curl -fsSLo gitleaks.tgz "https://github.com/gitleaks/gitleaks/releases/download/v${GITLEAKS_VERSION}/gitleaks_${GITLEAKS_VERSION}_linux_x64.tar.gz"
+          echo "${GITLEAKS_SHA256}  gitleaks.tgz" | sha256sum -c -
+          tar -xzf gitleaks.tgz gitleaks
+          ./gitleaks git --no-banner --redact --config .gitleaks.toml --exit-code 1 .
+
+  chart:
+    # helm lint on every push/PR, with a read-only token. Publishing lives in
+    # chart-publish, the only one that gets packages/id-token write, and only
+    # on v* tags. helm comes preinstalled on the GitHub runners.
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          persist-credentials: false
+      - run: helm lint deploy/helm/bayplan
+
+  chart-publish:
+    # On v* tags: packages the chart with the tag's version and publishes it as
+    # an OCI artifact to GHCR, next to the images:
+    # `helm install bayplan oci://ghcr.io/<owner>/charts/bayplan`. Signed with
+    # cosign like the images.
+    if: startsWith(github.ref, 'refs/tags/v')
+    needs: [chart]
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      packages: write
+      id-token: write
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          persist-credentials: false
+      - uses: sigstore/cosign-installer@6f9f17788090df1f26f669e9d70d6ae9567deba6 # v4.1.2
+      - env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          set -euo pipefail
+          VERSION="${GITHUB_REF_NAME#v}"
+          # The Artifact Hub image list carries the appVersion as a tag.
+          sed -i -E "s#(ghcr\.io/bayplan/bayplan(-agent)?):[^[:space:]]+#\1:${VERSION}#" deploy/helm/bayplan/Chart.yaml
+          helm package deploy/helm/bayplan --version "$VERSION" --app-version "$VERSION" -d /tmp/chart
+          echo "$GITHUB_TOKEN" | helm registry login ghcr.io -u "$GITHUB_ACTOR" --password-stdin
+          helm push "/tmp/chart/bayplan-$VERSION.tgz" "oci://ghcr.io/${GITHUB_REPOSITORY_OWNER}/charts" 2>&1 | tee /tmp/push.log
+          DIGEST="$(sed -n 's/^Digest: //p' /tmp/push.log)"
+          test -n "$DIGEST"
+          echo "$GITHUB_TOKEN" | cosign login ghcr.io -u "$GITHUB_ACTOR" --password-stdin
+          cosign sign --yes "ghcr.io/${GITHUB_REPOSITORY_OWNER}/charts/bayplan@${DIGEST}"
+
+  image-scan:
+    # Builds both images (amd64, not pushed) and fails on HIGH/CRITICAL
+    # vulnerabilities that have a fix: what does not pass here is never
+    # published. Read-only job: Trivy is third-party code and does not run next
+    # to a token that can write packages. The build cache is shared with the
+    # images job, which then rebuilds almost nothing.
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          persist-credentials: false
+      - uses: docker/setup-buildx-action@f87e5991a6d7451dcb8d9637bfbc97413f497069 # v4.4.1
+      - uses: docker/build-push-action@c3c9e263c25d99ce0380d002d59b67737d91b0dc # v7.4.0
+        with:
+          context: .
+          file: deploy/Containerfile
+          load: true
+          tags: bayplan:scan
+          cache-from: type=gha,scope=server
+          cache-to: type=gha,mode=max,scope=server
+      - uses: docker/build-push-action@c3c9e263c25d99ce0380d002d59b67737d91b0dc # v7.4.0
+        with:
+          context: .
+          file: deploy/Containerfile.agent
+          load: true
+          tags: bayplan-agent:scan
+          cache-from: type=gha,scope=agent
+          cache-to: type=gha,mode=max,scope=agent
+      - name: Trivy
+        env:
+          TRIVY_VERSION: 0.76.1
+          TRIVY_SHA256: c7cbe3137fb8a48a17574bede3dd6beb16742d1e9772929940fc90082c39d9c0
+        run: |
+          set -euo pipefail
+          curl -fsSLo trivy.tgz "https://github.com/aquasecurity/trivy/releases/download/v${TRIVY_VERSION}/trivy_${TRIVY_VERSION}_Linux-64bit.tar.gz"
+          echo "${TRIVY_SHA256}  trivy.tgz" | sha256sum -c -
+          tar -xzf trivy.tgz trivy
+          for image in bayplan:scan bayplan-agent:scan; do
+            ./trivy image --scanners vuln --severity HIGH,CRITICAL --ignore-unfixed \
+              --ignorefile .trivyignore.yaml --exit-code 1 --no-progress "$image"
+          done
+
+  images:
+    # Only on main and tags: publishes server and agent to the repo's own GHCR.
+    # Third-party actions are pinned by SHA (Dependabot proposes the bumps);
+    # the actions/* ones are GitHub's and stay pinned by major tag.
+    #
+    # Tags: `main` follows the branch; `latest`, `X.Y.Z`, `X.Y` (and `X` from 1.0
+    # on) only come from a v* tag, so `latest` is always a published release.
+    # A server built from main is versioned "main"
+    # and offers the agents `bayplan-agent:main`, which this job also publishes.
+    #
+    # Both images are multi-arch (amd64 + arm64) and signed keyless with cosign
+    # (GitHub's OIDC identity, no key to keep):
+    #   cosign verify ghcr.io/bayplan/bayplan:<ver> \
+    #     --certificate-identity-regexp 'https://github.com/bayplan/bayplan/' \
+    #     --certificate-oidc-issuer https://token.actions.githubusercontent.com
+    #
+    # Optional mirror on Docker Hub: set the
+    # repository variable DOCKERHUB_NAMESPACE and the secrets DOCKERHUB_USERNAME
+    # and DOCKERHUB_TOKEN. Without them only GHCR is published.
+    if: github.event_name == 'push'
+    needs: [backend, frontend, image-scan]
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      packages: write
+      id-token: write
+    env:
+      DOCKERHUB_NAMESPACE: ${{ vars.DOCKERHUB_NAMESPACE }}
+    steps:
+      - uses: actions/checkout@v7
+      # Only the final stage's short RUN is emulated: the Containerfiles build on
+      # $BUILDPLATFORM and cross-compile.
+      - uses: docker/setup-qemu-action@99012661954931238ded8c8b007157a8430204e1 # v4.4.0
+      - uses: sigstore/cosign-installer@6f9f17788090df1f26f669e9d70d6ae9567deba6 # v4.1.2
+      - uses: docker/setup-buildx-action@f87e5991a6d7451dcb8d9637bfbc97413f497069 # v4.4.1
+      - uses: docker/login-action@dbcb813823bdd20940b903addbd779551569679f # v4.6.0
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+      - if: env.DOCKERHUB_NAMESPACE != ''
+        uses: docker/login-action@dbcb813823bdd20940b903addbd779551569679f # v4.6.0
+        with:
+          registry: docker.io
+          username: ${{ secrets.DOCKERHUB_USERNAME }}
+          password: ${{ secrets.DOCKERHUB_TOKEN }}
+      - id: meta
+        uses: docker/metadata-action@dc802804100637a589fabce1cb79ff13a1411302 # v6.2.0
+        with:
+          images: |
+            ghcr.io/${{ github.repository }}
+            name=docker.io/${{ vars.DOCKERHUB_NAMESPACE }}/bayplan,enable=${{ vars.DOCKERHUB_NAMESPACE != '' }}
+          tags: |
+            type=ref,event=branch
+            type=semver,pattern={{version}}
+            type=semver,pattern={{major}}.{{minor}}
+            type=semver,pattern={{major}},enable=${{ !startsWith(github.ref, 'refs/tags/v0.') }}
+            type=raw,value=latest,enable=${{ startsWith(github.ref, 'refs/tags/v') }}
+      - id: build
+        uses: docker/build-push-action@c3c9e263c25d99ce0380d002d59b67737d91b0dc # v7.4.0
+        with:
+          context: .
+          file: deploy/Containerfile
+          platforms: linux/amd64,linux/arm64
+          cache-from: type=gha,scope=server
+          push: true
+          provenance: mode=max
+          sbom: true
+          build-args: VERSION=${{ steps.meta.outputs.version }}
+          tags: ${{ steps.meta.outputs.tags }}
+          labels: ${{ steps.meta.outputs.labels }}
+      - id: meta-agent
+        uses: docker/metadata-action@dc802804100637a589fabce1cb79ff13a1411302 # v6.2.0
+        with:
+          images: |
+            ghcr.io/${{ github.repository }}-agent
+            name=docker.io/${{ vars.DOCKERHUB_NAMESPACE }}/bayplan-agent,enable=${{ vars.DOCKERHUB_NAMESPACE != '' }}
+          tags: |
+            type=ref,event=branch
+            type=semver,pattern={{version}}
+            type=semver,pattern={{major}}.{{minor}}
+            type=semver,pattern={{major}},enable=${{ !startsWith(github.ref, 'refs/tags/v0.') }}
+            type=raw,value=latest,enable=${{ startsWith(github.ref, 'refs/tags/v') }}
+      - id: build-agent
+        uses: docker/build-push-action@c3c9e263c25d99ce0380d002d59b67737d91b0dc # v7.4.0
+        with:
+          context: .
+          file: deploy/Containerfile.agent
+          platforms: linux/amd64,linux/arm64
+          cache-from: type=gha,scope=agent
+          push: true
+          provenance: mode=max
+          sbom: true
+          build-args: VERSION=${{ steps.meta-agent.outputs.version }}
+          tags: ${{ steps.meta-agent.outputs.tags }}
+          labels: ${{ steps.meta-agent.outputs.labels }}
+      # Signed by digest, not by tag: a tag can be moved, the digest cannot.
+      - name: Sign
+        env:
+          SERVER: ghcr.io/${{ github.repository }}@${{ steps.build.outputs.digest }}
+          AGENT: ghcr.io/${{ github.repository }}-agent@${{ steps.build-agent.outputs.digest }}
+          SERVER_DIGEST: ${{ steps.build.outputs.digest }}
+          AGENT_DIGEST: ${{ steps.build-agent.outputs.digest }}
+        run: |
+          set -euo pipefail
+          cosign sign --yes "$SERVER" "$AGENT"
+          if [ -n "$DOCKERHUB_NAMESPACE" ]; then
+            cosign sign --yes "docker.io/$DOCKERHUB_NAMESPACE/bayplan@$SERVER_DIGEST" "docker.io/$DOCKERHUB_NAMESPACE/bayplan-agent@$AGENT_DIGEST"
+          fi
+
+  sbom:
+    # Only on v* tags: SBOM (CycloneDX) of the source code, covering go.mod and package-lock:
+    # that is what goes into the binaries and images published by the previous jobs.
+    # Runs with read-only permissions and without credentials in the checkout: Trivy is
+    # third-party code and must not run next to a token with write permission. Its checksum
+    # is pinned here (not read from the same release, which would prove nothing).
+    if: startsWith(github.ref, 'refs/tags/v')
+    needs: [images, chart-publish]
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          persist-credentials: false
+      - name: Trivy
+        env:
+          TRIVY_VERSION: 0.76.1
+          TRIVY_SHA256: c7cbe3137fb8a48a17574bede3dd6beb16742d1e9772929940fc90082c39d9c0
+        run: |
+          set -euo pipefail
+          curl -fsSLo trivy.tgz "https://github.com/aquasecurity/trivy/releases/download/v${TRIVY_VERSION}/trivy_${TRIVY_VERSION}_Linux-64bit.tar.gz"
+          echo "${TRIVY_SHA256}  trivy.tgz" | sha256sum -c -
+          tar -xzf trivy.tgz trivy
+      - name: SBOM
+        run: ./trivy fs --format cyclonedx --output "bayplan-${GITHUB_REF_NAME}.sbom.cdx.json" --scanners license --skip-dirs frontend/node_modules .
+      - uses: actions/upload-artifact@v7
+        with:
+          name: sbom
+          path: bayplan-*.sbom.cdx.json
+          if-no-files-found: error
+
+  release:
+    # Creates the GitHub release with generated notes and attaches the SBOM and the
+    # third-party notices. It is the only job with write permission on contents, and only gh runs in it.
+    if: startsWith(github.ref, 'refs/tags/v')
+    # third-party: the release attaches THIRD_PARTY_NOTICES.md, which must
+    # match what the binaries link.
+    needs: [sbom, third-party, gitleaks]
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          persist-credentials: false
+      - uses: actions/download-artifact@v8
+        with:
+          name: sbom
+      # The list of images to mirror for an air-gapped install (deploy/airgap).
+      - run: deploy/airgap/images.sh "$GITHUB_REF_NAME" > bayplan-images.txt
+      - name: Release
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          gh release create "$GITHUB_REF_NAME" --verify-tag --generate-notes \
+            --notes "Images (amd64 and arm64, signed with cosign): \`ghcr.io/${GITHUB_REPOSITORY}:${GITHUB_REF_NAME#v}\` and \`ghcr.io/${GITHUB_REPOSITORY}-agent:${GITHUB_REF_NAME#v}\`. Chart: \`oci://ghcr.io/${GITHUB_REPOSITORY_OWNER}/charts/bayplan\` version ${GITHUB_REF_NAME#v}. Classic Helm repo: \`helm repo add bayplan https://${GITHUB_REPOSITORY_OWNER}.github.io/${GITHUB_REPOSITORY#*/}\`. Air-gapped installs: bayplan-images.txt and deploy/airgap/mirror.sh. Apache 2.0 license; third-party notices in THIRD_PARTY_NOTICES.md." \
+            "bayplan-${GITHUB_REF_NAME}.sbom.cdx.json" bayplan-images.txt THIRD_PARTY_NOTICES.md
+
+  helm-repo:
+    # Classic Helm repository on GitHub Pages, next to the OCI one, for tools
+    # and users that still expect `helm repo add`. The chart .tgz goes as a
+    # release asset and gh-pages only holds index.yaml. Requires Pages enabled
+    # on the gh-pages branch.
+    # Runs after the release because it uploads into it.
+    if: startsWith(github.ref, 'refs/tags/v')
+    needs: [release]
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          persist-credentials: false
+      - name: Publish chart to the Helm repository
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          set -euo pipefail
+          VERSION="${GITHUB_REF_NAME#v}"
+          # The Artifact Hub image list carries the appVersion as a tag.
+          sed -i -E "s#(ghcr\.io/bayplan/bayplan(-agent)?):[^[:space:]]+#\1:${VERSION}#" deploy/helm/bayplan/Chart.yaml
+          mkdir dist
+          helm package deploy/helm/bayplan --version "$VERSION" --app-version "$VERSION" -d dist
+          gh release upload "$GITHUB_REF_NAME" "dist/bayplan-$VERSION.tgz" --clobber
+          REMOTE="https://x-access-token:${GH_TOKEN}@github.com/${GITHUB_REPOSITORY}.git"
+          git config --global user.name "github-actions[bot]"
+          git config --global user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          if git ls-remote --exit-code "$REMOTE" gh-pages >/dev/null; then
+            git fetch -q "$REMOTE" gh-pages
+            git worktree add pages FETCH_HEAD
+          else
+            git worktree add --detach pages
+            (cd pages && git checkout -q --orphan gh-pages && git rm -rqf .)
+          fi
+          MERGE=()
+          if [ -f pages/index.yaml ]; then MERGE=(--merge pages/index.yaml); fi
+          helm repo index dist --url "https://github.com/${GITHUB_REPOSITORY}/releases/download/${GITHUB_REF_NAME}" "${MERGE[@]}"
+          cp dist/index.yaml pages/index.yaml
+          cp deploy/helm/artifacthub-repo.yml pages/artifacthub-repo.yml
+          cd pages
+          git add index.yaml artifacthub-repo.yml
+          git commit -qm "Helm repository index: ${VERSION}"
+          git push -q "$REMOTE" HEAD:gh-pages

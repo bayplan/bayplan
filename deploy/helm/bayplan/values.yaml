@@ -1,0 +1,155 @@
+# Values of the Bayplan chart (the server). The agent deployed into each
+# managed cluster is NOT part of this chart: the server itself generates it
+# as a manifest when a cluster is registered.
+
+# Private registry for air-gapped installs (registry.example.com or
+# registry.example.com/mirror): replaces the registry of the server, agent and
+# Postgres images, keeping their paths. deploy/airgap/ has the list of images
+# and a script to copy them.
+imageRegistry: ""
+
+image:
+  repository: ghcr.io/bayplan/bayplan
+  tag: ""            # empty = the chart's appVersion
+  pullPolicy: IfNotPresent
+imagePullSecrets: []
+
+# Agent image the server writes into the registration manifests. Empty = the
+# one with the same version as the server (ghcr.io/bayplan/bayplan-agent:<appVersion>).
+# It can be changed later from Settings → Server; this is only the initial value.
+agentImage: ""
+
+# Local cluster: the cluster where the chart is installed shows up registered as
+# "local", connected with the server's ServiceAccount and the
+# RBAC in files/rbac.yaml. rbacMode: scoped (recommended) or cluster-admin.
+# The panel's own namespace is protected: the backend neither shows its
+# Secrets nor writes into it, and a ValidatingAdmissionPolicy (if the cluster
+# has it, 1.30+) rejects at the API server every write by the bayplan:* groups
+# there. Set it to false if you do not want the panel to manage its own cluster.
+localCluster:
+  enabled: true
+  name: local
+  rbacMode: scoped
+
+replicaCount: 1   # a single instance per database (settings cache, rate limiter and agent tunnels live in memory)
+
+service:
+  type: ClusterIP
+  port: 80
+
+ingress:
+  enabled: false
+  className: ""
+  # Agents, logs and the terminals use long-lived WebSockets. The chart sets the
+  # ingress-nginx timeouts (proxy-read/send-timeout 3600) itself; any other
+  # controller needs its own equivalent here or in its config, or it cuts those
+  # connections after its default idle timeout (often 60 s): Traefik
+  # (serversTransport / entryPoint respondingTimeouts), HAProxy
+  # (haproxy.org/timeout-tunnel), Contour (projectcontour.io/response-timeout,
+  # idle timeout in HTTPProxy), cloud load balancers (idle timeout setting).
+  annotations: {}
+  host: bayplan.example.com
+  tls:
+    enabled: false
+    # Where the certificate comes from:
+    #   secret      - you create the Secret secretName (kubernetes.io/tls)
+    #   letsEncrypt - cert-manager + Let's Encrypt (HTTP-01 through this ingress);
+    #                 needs letsEncrypt.email and a host reachable from the internet
+    #   selfSigned  - cert-manager creates a private CA for this install; the
+    #                 server hands it to the agents so that they keep verifying
+    # The last two need cert-manager installed in the cluster.
+    source: secret
+    secretName: bayplan-tls
+
+letsEncrypt:
+  email: ""
+  environment: production   # or staging, to test without hitting the rate limits
+
+# Public URL users open the application with. If left empty and there is an
+# ingress, it is derived from ingress.host. Required for SSO and agents.
+publicURL: ""
+
+# Networks from which X-Forwarded-For is accepted (the client IP that the audit
+# log records and the login rate limiter keys on). Empty by default: trusting
+# every private range would let any pod, or any user on the LAN reaching the
+# Service, write the IP the audit log records. Until this is set the audit log
+# shows the ingress controller's IP, and every client shares one per-IP login
+# bucket: one client can throttle everybody's login (browsers that already
+# logged in are exempt by their device cookie). The server logs a warning and
+# NOTES.txt reminds it. Set it to the ingress controller's pods
+# (their pod CIDR, or the node CIDR with externalTrafficPolicy: Local), e.g.
+# "10.42.0.0/16", and/or enable networkPolicy below so that only the controller
+# reaches the server.
+trustedProxies: ""
+
+# Opt-in NetworkPolicy for the server pod: ingress only from the namespaces
+# below (the ingress controller's) and, with the bundled Postgres, only the
+# server can reach the database. Agents and browsers come in through the
+# ingress, so they need nothing else. Requires a CNI that enforces
+# NetworkPolicy. Egress is not restricted: the server talks to the API servers
+# of the managed clusters, SSO, S3, registries and webhooks.
+networkPolicy:
+  enabled: false
+  # Namespaces (by name) whose pods may reach the server's HTTP port.
+  ingressNamespaces: [ingress-nginx]
+
+# Credentials encryption key (AES-256, base64 of 32 bytes). If left empty,
+# the chart generates one on the first install and KEEPS it across upgrades
+# (lookup of the existing Secret). Keep a copy of the Secret apart from the
+# database backup: without the key the tokens cannot be decrypted.
+#
+# WITH A TOOL THAT RENDERS WITH `helm template` (some GitOps tools) lookup always
+# returns empty, so an empty value would mean a NEW key on every sync and data
+# that can no longer be decrypted. There, use existingEncryptionSecret (and
+# existingDatabaseSecret or postgresql.password) with a Secret created outside
+# the chart (Sealed Secrets, External Secrets…). Tools that run a real
+# `helm install/upgrade` are not affected.
+encryptionKey: ""
+# Alternative: an already existing Secret with the key under `encryptionKey`.
+existingEncryptionSecret: ""
+
+postgresql:
+  # Bundled Postgres (single-replica StatefulSet). For serious production,
+  # disable it and point to a managed database with externalDatabaseURL.
+  enabled: true
+  # Exact version: a floating tag would change under a running install. Keep
+  # the major (16): a new major does not start on the old data directory.
+  image: docker.io/library/postgres:18.6-alpine3.24
+  password: ""        # empty = generated and kept, like the encryption key
+  storage: 5Gi
+  storageClassName: ""
+  resources:
+    requests:
+      cpu: 100m
+      memory: 256Mi
+    limits:
+      memory: 1Gi
+
+# If postgresql.enabled=false: full URL, with the password inside.
+externalDatabaseURL: ""
+# Or an existing Secret with the URL under the `databaseURL` key.
+existingDatabaseSecret: ""
+
+session:
+  idleTimeout: 30m
+  absoluteTimeout: 12h
+
+logLevel: info
+
+# Initial password of the "admin" user. Empty =
+# generated and kept in the Secret <release>-bootstrap; NOTES shows how to read
+# it. It is only used on the first start and has to be changed on first login,
+# so the value left in the Secret stops being a credential.
+bootstrapPassword: ""
+
+resources:
+  requests:
+    cpu: 100m
+    memory: 128Mi
+  limits:
+    memory: 512Mi
+
+nodeSelector: {}
+tolerations: []
+affinity: {}
+podAnnotations: {}

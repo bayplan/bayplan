@@ -1,0 +1,16 @@
+{{- /*
+The panel's ValidatingAdmissionPolicies (files/admission-policy.yaml, a copy
+of deploy/rbac/admission-policy.yaml) for the local cluster, next to its RBAC.
+Only on clusters that serve ValidatingAdmissionPolicy v1 (1.30+). In
+cluster-admin mode the policy that narrows the admin group's RBAC writes is
+left out: bayplan:admins is cluster-admin there on purpose.
+*/ -}}
+{{- if and .Values.localCluster.enabled (.Capabilities.APIVersions.Has "admissionregistration.k8s.io/v1/ValidatingAdmissionPolicy") }}
+{{- $adminMode := eq .Values.localCluster.rbacMode "cluster-admin" }}
+{{- range splitList "\n---\n" (.Files.Get "files/admission-policy.yaml") }}
+{{- if not (and $adminMode (contains "bayplan-limit-admin-rbac" .)) }}
+---
+{{ . }}
+{{- end }}
+{{- end }}
+{{- end }}

@@ -1,0 +1,5 @@
+# Isolated internal network: shared only by bayplan.container and
+# bayplan-db.container. Postgres exposes no port to the host.
+[Network]
+NetworkName=bayplan-internal
+Internal=true

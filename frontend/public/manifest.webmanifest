@@ -1,0 +1,13 @@
+{
+  "name": "Bayplan",
+  "short_name": "Bayplan",
+  "description": "Kubernetes & Docker cluster management",
+  "start_url": "/",
+  "display": "standalone",
+  "background_color": "#F4F2EE",
+  "theme_color": "#2F2F2F",
+  "icons": [
+    { "src": "/icon-512.png", "sizes": "512x512", "type": "image/png", "purpose": "any" },
+    { "src": "/apple-touch-icon.png", "sizes": "180x180", "type": "image/png" }
+  ]
+}

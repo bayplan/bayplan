@@ -1,0 +1,3986 @@
+# OpenAPI specification of the panel. Served at GET /api/openapi.json (see openapi.go).
+# Maintained by hand; when adding a route meant for scripts, add it here.
+openapi: 3.0.3
+info:
+  title: Bayplan API
+  version: '1'
+  description: 'Bayplan API, the same one the frontend uses. Authentication: session cookie (browser) or personal API
+    token in `Authorization: Bearer bpl_…` (scripts, CI). A token acts with the permissions of its user; with `readOnly`
+    it is capped to readonly on every cluster. Errors from the cluster API server are returned verbatim with 502.'
+servers:
+- url: /
+tags:
+- name: Auth
+- name: Instance
+- name: Clusters
+- name: Cloud
+- name: Resources
+- name: Writes
+- name: Helm
+- name: GitOps
+- name: Registries
+- name: Extensions
+- name: Docker
+- name: Notifications
+- name: Users
+- name: Backups
+- name: Audit
+- name: WebSocket
+components:
+  securitySchemes:
+    cookieAuth:
+      type: apiKey
+      in: cookie
+      name: bayplan_session
+    bearerAuth:
+      type: http
+      scheme: bearer
+      description: Personal API token (bpl_…), created under Profile → API tokens.
+  schemas:
+    ClusterInput:
+      type: object
+      properties:
+        displayName:
+          type: string
+        description:
+          type: string
+        connector:
+          type: string
+          enum:
+          - direct
+          - agent
+          - cloud
+        kind:
+          type: string
+          enum:
+          - kubernetes
+          - docker
+        kubeconfig:
+          type: string
+        apiEndpoint:
+          type: string
+        caCert:
+          type: string
+        saToken:
+          type: string
+        clientCert:
+          type: string
+        clientKey:
+          type: string
+        insecureSkipTLSVerify:
+          type: boolean
+        cloudCredentialId:
+          type: integer
+        cloudRef:
+          type: object
+    NamespaceQuotaInput:
+      type: object
+      properties:
+        createNamespace:
+          type: boolean
+        requestsCpu:
+          type: string
+        requestsMemory:
+          type: string
+        limitsCpu:
+          type: string
+        limitsMemory:
+          type: string
+        pods:
+          type: string
+        persistentVolumeClaims:
+          type: string
+        requestsStorage:
+          type: string
+        defaultRequestCpu:
+          type: string
+        defaultRequestMemory:
+          type: string
+        defaultLimitCpu:
+          type: string
+        defaultLimitMemory:
+          type: string
+        maxCpu:
+          type: string
+        maxMemory:
+          type: string
+        dryRun:
+          type: boolean
+paths:
+  /api/auth/status:
+    get:
+      tags:
+      - Auth
+      summary: Initial setup status
+      description: No authentication.
+      responses:
+        '200':
+          description: OK
+  /api/auth/setup:
+    post:
+      tags:
+      - Auth
+      summary: Initial admin setup with the one-time token
+      description: No authentication.
+      responses:
+        '200':
+          description: OK
+      requestBody:
+        content:
+          application/json:
+            schema:
+              type: object
+  /api/auth/login:
+    post:
+      tags:
+      - Auth
+      summary: Local login (session cookie + CSRF cookie)
+      description: No authentication.
+      responses:
+        '200':
+          description: OK
+      requestBody:
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                username: {}
+  /api/auth/logout:
+    post:
+      tags:
+      - Auth
+      summary: Log out
+      description: Any signed-in user. With a cookie, requires the X-CSRF-Token header (value of the bayplan_csrf
+        cookie); not with an API token.
+      responses:
+        '200':
+          description: OK
+        '401':
+          description: No session
+        '403':
+          description: Forbidden
+      security:
+      - cookieAuth: []
+      - bearerAuth: []
+      requestBody:
+        content:
+          application/json:
+            schema:
+              type: object
+  /api/auth/me:
+    get:
+      tags:
+      - Auth
+      summary: Current user, global role and preferences
+      description: Any signed-in user.
+      responses:
+        '200':
+          description: OK
+        '401':
+          description: No session
+        '403':
+          description: Forbidden
+      security:
+      - cookieAuth: []
+      - bearerAuth: []
+  /api/auth/change-password:
+    post:
+      tags:
+      - Auth
+      summary: Change the current user's password
+      description: Any signed-in user. With a cookie, requires the X-CSRF-Token header (value of the bayplan_csrf
+        cookie); not with an API token.
+      responses:
+        '200':
+          description: OK
+        '401':
+          description: No session
+        '403':
+          description: Forbidden
+      security:
+      - cookieAuth: []
+      - bearerAuth: []
+      requestBody:
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                currentPassword: {}
+  /api/auth/profile:
+    patch:
+      tags:
+      - Auth
+      summary: Edit display name and email
+      description: Any signed-in user. With a cookie, requires the X-CSRF-Token header (value of the bayplan_csrf
+        cookie); not with an API token.
+      responses:
+        '200':
+          description: OK
+        '401':
+          description: No session
+        '403':
+          description: Forbidden
+      security:
+      - cookieAuth: []
+      - bearerAuth: []
+      requestBody:
+        content:
+          application/json:
+            schema:
+              type: object
+  /api/auth/preferences:
+    patch:
+      tags:
+      - Auth
+      summary: Partial merge of preferences (free-form JSON)
+      description: Any signed-in user. With a cookie, requires the X-CSRF-Token header (value of the bayplan_csrf
+        cookie); not with an API token.
+      responses:
+        '200':
+          description: OK
+        '401':
+          description: No session
+        '403':
+          description: Forbidden
+      security:
+      - cookieAuth: []
+      - bearerAuth: []
+      requestBody:
+        content:
+          application/json:
+            schema:
+              type: object
+  /api/auth/oidc/login:
+    get:
+      tags:
+      - Auth
+      summary: Start the OIDC flow (redirects to the provider)
+      description: No authentication.
+      responses:
+        '200':
+          description: OK
+  /api/auth/oidc/callback:
+    get:
+      tags:
+      - Auth
+      summary: OIDC callback
+      description: No authentication.
+      responses:
+        '200':
+          description: OK
+  /api/clusters/{id}/explain:
+    post:
+      tags:
+      - AI
+      summary: 'Explain an object with the configured AI provider ({kind, namespace, name, lang})'
+      description: The configured minimum role on cluster {id} (editor by default); CSRF with a cookie session. Sends the object's YAML (env values, Secret data and managedFields removed), its recent events and the troubled container's last log lines, with secret-looking text scrubbed. Never the panel's own namespace. Counted against the per-user daily limit (fails closed) and audited as ai.explain.
+      responses:
+        '200':
+          description: OK ({text, provider, model, sent, inputTokens, outputTokens, durationMs, remainingToday})
+        '403':
+          description: Role below the configured minimum, or the panel's namespace
+        '409':
+          description: AI not configured
+        '429':
+          description: Daily limit reached
+        '502':
+          description: The provider failed (its message is returned)
+      security:
+      - cookieAuth: []
+      - bearerAuth: []
+      parameters:
+      - name: id
+        in: path
+        required: true
+        schema:
+          type: integer
+  /api/assistant/chat:
+    post:
+      tags:
+      - AI
+      summary: 'In-panel AI assistant: one question with the whole conversation ({messages, clusterId?, namespaces?, lang}), answer streamed as NDJSON events'
+      description: Read-only. The model only gets the MCP read tools, run through this API with the caller's session; each cluster or namespace it touches must pass the configured AI minimum role and is never the panel's own namespace. Tool output is redacted like Explain. Nothing is stored; each question counts against the daily AI limit and is audited as ai.assistant. Events are tool, tool_error, note, answer, done and error.
+      responses:
+        '200':
+          description: application/x-ndjson stream of events
+        '409':
+          description: AI not configured
+        '429':
+          description: Daily limit reached
+      security:
+      - cookieAuth: []
+      - bearerAuth: []
+  /api/ai/status:
+    get:
+      tags:
+      - AI
+      summary: Whether Explain is available, with which provider/model and minimum role
+      responses:
+        '200':
+          description: OK
+      security:
+      - cookieAuth: []
+      - bearerAuth: []
+  /api/settings/ai/test:
+    post:
+      tags:
+      - AI
+      summary: Test the saved AI configuration with a one-line prompt (global admin)
+      responses:
+        '200':
+          description: OK ({ok, latencyMs, reply})
+        '422':
+          description: The provider failed ({ok:false, error})
+      security:
+      - cookieAuth: []
+      - bearerAuth: []
+  /api/mcp:
+    post:
+      tags:
+      - MCP
+      summary: Model Context Protocol server (Streamable HTTP, JSON-RPC 2.0) for AI clients
+      description: 'API tokens only (Authorization: Bearer). Methods initialize, ping, tools/list, tools/call. Every tool calls this same API with the caller''s token, so RBAC, read-only tokens and audit apply (writes are audited with detail.via=mcp). A read-only token only lists the read tools; apply_manifest requires a prior dry-run of the same YAML.'
+      responses:
+        '200':
+          description: JSON-RPC response
+        '202':
+          description: Notification accepted (no body)
+        '401':
+          description: No token (cookie sessions are not accepted)
+        '403':
+          description: Request from a browser (Origin header)
+      security:
+      - bearerAuth: []
+  /api/auth/tokens:
+    get:
+      tags:
+      - Auth
+      summary: List my API tokens (never the value)
+      description: Browser session (cookie) only, not an API token.
+      responses:
+        '200':
+          description: OK
+        '401':
+          description: No session
+        '403':
+          description: Forbidden
+      security:
+      - cookieAuth: []
+      - bearerAuth: []
+    post:
+      tags:
+      - Auth
+      summary: Create an API token; the value is returned ONCE
+      description: Browser session (cookie) only, not an API token. With a cookie, requires the X-CSRF-Token header
+        (value of the bayplan_csrf cookie); not with an API token.
+      responses:
+        '200':
+          description: OK
+        '401':
+          description: No session
+        '403':
+          description: Forbidden
+      security:
+      - cookieAuth: []
+      - bearerAuth: []
+      requestBody:
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                name: {}
+  /api/auth/tokens/{id}:
+    delete:
+      tags:
+      - Auth
+      summary: Revoke an API token
+      description: Browser session (cookie) only, not an API token. With a cookie, requires the X-CSRF-Token header
+        (value of the bayplan_csrf cookie); not with an API token.
+      responses:
+        '200':
+          description: OK
+        '401':
+          description: No session
+        '403':
+          description: Forbidden
+      security:
+      - cookieAuth: []
+      - bearerAuth: []
+      parameters:
+      - name: id
+        in: path
+        required: true
+        schema:
+          type: integer
+  /api/settings:
+    get:
+      tags:
+      - Instance
+      summary: Instance settings (secrets masked)
+      description: Global admin, or admin on cluster {id} on cluster routes.
+      responses:
+        '200':
+          description: OK
+        '401':
+          description: No session
+        '403':
+          description: Forbidden
+      security:
+      - cookieAuth: []
+      - bearerAuth: []
+  /api/settings/{key}:
+    put:
+      tags:
+      - Instance
+      summary: 'Save a section: server | auth.oidc | smtp | costs'
+      description: Global admin, or admin on cluster {id} on cluster routes. With a cookie, requires the X-CSRF-Token
+        header (value of the bayplan_csrf cookie); not with an API token.
+      responses:
+        '200':
+          description: OK
+        '401':
+          description: No session
+        '403':
+          description: Forbidden
+      security:
+      - cookieAuth: []
+      - bearerAuth: []
+      requestBody:
+        content:
+          application/json:
+            schema:
+              type: object
+      parameters:
+      - name: key
+        in: path
+        required: true
+        schema:
+          type: string
+  /api/openapi.json:
+    get:
+      tags:
+      - Instance
+      summary: This specification
+      description: Any signed-in user.
+      responses:
+        '200':
+          description: OK
+        '401':
+          description: No session
+        '403':
+          description: Forbidden
+      security:
+      - cookieAuth: []
+      - bearerAuth: []
+  /healthz:
+    get:
+      tags:
+      - Instance
+      summary: Liveness
+      description: No authentication.
+      responses:
+        '200':
+          description: OK
+  /readyz:
+    get:
+      tags:
+      - Instance
+      summary: Readiness (503 if the database does not respond)
+      description: No authentication.
+      responses:
+        '200':
+          description: OK
+  /metrics:
+    get:
+      tags:
+      - Instance
+      summary: Prometheus metrics
+      description: No authentication.
+      responses:
+        '200':
+          description: OK
+  /api/clusters:
+    get:
+      tags:
+      - Clusters
+      summary: Clusters visible to the user, with connection status and effective role
+      description: Any signed-in user.
+      responses:
+        '200':
+          description: OK
+        '401':
+          description: No session
+        '403':
+          description: Forbidden
+      security:
+      - cookieAuth: []
+      - bearerAuth: []
+    post:
+      tags:
+      - Clusters
+      summary: 'Register a cluster: direct (kubeconfig/token/certificate), agent or cloud'
+      description: Global admin, or admin on cluster {id} on cluster routes. With a cookie, requires the X-CSRF-Token
+        header (value of the bayplan_csrf cookie); not with an API token.
+      responses:
+        '200':
+          description: OK
+        '401':
+          description: No session
+        '403':
+          description: Forbidden
+      security:
+      - cookieAuth: []
+      - bearerAuth: []
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/ClusterInput'
+  /api/clusters/{id}:
+    patch:
+      tags:
+      - Clusters
+      summary: Edit name, description, enabled, or rotate credentials
+      description: Global admin, or admin on cluster {id} on cluster routes. With a cookie, requires the X-CSRF-Token
+        header (value of the bayplan_csrf cookie); not with an API token.
+      responses:
+        '200':
+          description: OK
+        '401':
+          description: No session
+        '403':
+          description: Forbidden
+        '503':
+          description: Cluster not synced or kind unavailable (the body carries the reason)
+        '502':
+          description: Cluster API server error, verbatim (RBAC, admission…)
+      security:
+      - cookieAuth: []
+      - bearerAuth: []
+      requestBody:
+        content:
+          application/json:
+            schema:
+              type: object
+      parameters:
+      - name: id
+        in: path
+        required: true
+        schema:
+          type: integer
+    delete:
+      tags:
+      - Clusters
+      summary: Delete a cluster and its role assignments
+      description: Global admin, or admin on cluster {id} on cluster routes. With a cookie, requires the X-CSRF-Token
+        header (value of the bayplan_csrf cookie); not with an API token.
+      responses:
+        '200':
+          description: OK
+        '401':
+          description: No session
+        '403':
+          description: Forbidden
+        '503':
+          description: Cluster not synced or kind unavailable (the body carries the reason)
+        '502':
+          description: Cluster API server error, verbatim (RBAC, admission…)
+      security:
+      - cookieAuth: []
+      - bearerAuth: []
+      parameters:
+      - name: id
+        in: path
+        required: true
+        schema:
+          type: integer
+  /api/clusters/{id}/agent/manifest:
+    post:
+      tags:
+      - Clusters
+      summary: Regenerate the agent manifest URL
+      description: Global admin, or admin on cluster {id} on cluster routes. With a cookie, requires the X-CSRF-Token
+        header (value of the bayplan_csrf cookie); not with an API token.
+      responses:
+        '200':
+          description: OK
+        '401':
+          description: No session
+        '403':
+          description: Forbidden
+        '503':
+          description: Cluster not synced or kind unavailable (the body carries the reason)
+        '502':
+          description: Cluster API server error, verbatim (RBAC, admission…)
+      security:
+      - cookieAuth: []
+      - bearerAuth: []
+      requestBody:
+        content:
+          application/json:
+            schema:
+              type: object
+      parameters:
+      - name: id
+        in: path
+        required: true
+        schema:
+          type: integer
+  /api/agent/manifest/{id}/{token}:
+    get:
+      tags:
+      - Clusters
+      summary: Agent manifest (no session, 1 h token)
+      description: No authentication.
+      responses:
+        '200':
+          description: OK
+      parameters:
+      - name: id
+        in: path
+        required: true
+        schema:
+          type: integer
+      - name: token
+        in: path
+        required: true
+        schema:
+          type: string
+  /api/clusters/{id}/cloud/rbac:
+    get:
+      tags:
+      - Clusters
+      summary: RBAC to apply on a cloud cluster
+      description: Global admin, or admin on cluster {id} on cluster routes.
+      responses:
+        '200':
+          description: OK
+        '401':
+          description: No session
+        '403':
+          description: Forbidden
+        '503':
+          description: Cluster not synced or kind unavailable (the body carries the reason)
+      security:
+      - cookieAuth: []
+      - bearerAuth: []
+      parameters:
+      - name: id
+        in: path
+        required: true
+        schema:
+          type: integer
+  /api/clusters/{id}/kinds:
+    get:
+      tags:
+      - Clusters
+      summary: Optional kinds available in the cluster and the reason if any is missing
+      description: Readonly role or higher on cluster {id}.
+      responses:
+        '200':
+          description: OK
+        '401':
+          description: No session
+        '403':
+          description: Forbidden
+        '503':
+          description: Cluster not synced or kind unavailable (the body carries the reason)
+      security:
+      - cookieAuth: []
+      - bearerAuth: []
+      parameters:
+      - name: id
+        in: path
+        required: true
+        schema:
+          type: integer
+  /api/clusters/{id}/summary:
+    get:
+      tags:
+      - Clusters
+      summary: Short cluster summary
+      description: Readonly role or higher on cluster {id}.
+      responses:
+        '200':
+          description: OK
+        '401':
+          description: No session
+        '403':
+          description: Forbidden
+        '503':
+          description: Cluster not synced or kind unavailable (the body carries the reason)
+      security:
+      - cookieAuth: []
+      - bearerAuth: []
+      parameters:
+      - name: id
+        in: path
+        required: true
+        schema:
+          type: integer
+  /api/clusters/{id}/overview:
+    get:
+      tags:
+      - Clusters
+      summary: 'Overview: counters, reserved capacity, issues, Warning events'
+      description: Readonly role or higher on cluster {id}.
+      responses:
+        '200':
+          description: OK
+        '401':
+          description: No session
+        '403':
+          description: Forbidden
+        '503':
+          description: Cluster not synced or kind unavailable (the body carries the reason)
+      security:
+      - cookieAuth: []
+      - bearerAuth: []
+      parameters:
+      - name: id
+        in: path
+        required: true
+        schema:
+          type: integer
+  /api/clusters/{id}/topology:
+    get:
+      tags:
+      - Clusters
+      summary: 'Topology graph: Ingress -> Service -> workload -> pods -> PVC, with status per node'
+      description: Readonly role or higher on cluster {id}. Configured relations only (owner, selector, route, volume), not observed traffic. Above 3000 nodes the response is empty with tooLarge=true.
+      responses:
+        '200':
+          description: OK
+        '401':
+          description: No session
+        '403':
+          description: Forbidden
+        '503':
+          description: Cluster not synced (the body carries the reason)
+      security:
+      - cookieAuth: []
+      - bearerAuth: []
+      parameters:
+      - name: id
+        in: path
+        required: true
+        schema:
+          type: integer
+      - name: namespace
+        in: query
+        required: false
+        description: Comma-separated namespaces; all if empty
+        schema:
+          type: string
+  /api/clusters/{id}/pods/{namespace}/{name}/logs:
+    get:
+      tags:
+      - Clusters
+      summary: Last lines of a pod container's log (no follow; the UI follows over WebSocket)
+      description: Readonly role or higher on cluster {id}. Impersonated with the role on the cluster, the panel's own namespace is refused, and the read is audited (pod.logs.read).
+      responses:
+        '200':
+          description: OK ({logs, truncated, tailLines})
+        '401':
+          description: No session
+        '403':
+          description: Forbidden
+        '502':
+          description: The cluster's API server refused it (the body says why)
+      security:
+      - cookieAuth: []
+      - bearerAuth: []
+      parameters:
+      - name: id
+        in: path
+        required: true
+        schema:
+          type: integer
+      - name: namespace
+        in: path
+        required: true
+        schema:
+          type: string
+      - name: name
+        in: path
+        required: true
+        schema:
+          type: string
+      - name: container
+        in: query
+        required: false
+        schema:
+          type: string
+      - name: tailLines
+        in: query
+        required: false
+        description: 1-2000, default 200
+        schema:
+          type: integer
+      - name: previous
+        in: query
+        required: false
+        description: Logs of the previous container run
+        schema:
+          type: boolean
+  /api/clusters/{id}/metrics:
+    get:
+      tags:
+      - Clusters
+      summary: Actual usage (metrics-server) per node and total; available=false without metrics-server
+      description: Readonly role or higher on cluster {id}.
+      responses:
+        '200':
+          description: OK
+        '401':
+          description: No session
+        '403':
+          description: Forbidden
+        '503':
+          description: Cluster not synced or kind unavailable (the body carries the reason)
+      security:
+      - cookieAuth: []
+      - bearerAuth: []
+      parameters:
+      - name: id
+        in: path
+        required: true
+        schema:
+          type: integer
+  /api/clusters/{id}/metrics/pods:
+    get:
+      tags:
+      - Clusters
+      summary: Actual usage per pod and container versus requests/limits
+      description: Readonly role or higher on cluster {id}.
+      responses:
+        '200':
+          description: OK
+        '401':
+          description: No session
+        '403':
+          description: Forbidden
+        '503':
+          description: Cluster not synced or kind unavailable (the body carries the reason)
+      security:
+      - cookieAuth: []
+      - bearerAuth: []
+      parameters:
+      - name: id
+        in: path
+        required: true
+        schema:
+          type: integer
+      - name: namespace
+        in: query
+        required: false
+        schema:
+          type: string
+        description: Comma-separated list; empty = all.
+  /api/fleet/attention:
+    get:
+      tags:
+      - Clusters
+      summary: Issues across all visible clusters
+      description: Any signed-in user.
+      responses:
+        '200':
+          description: OK
+        '401':
+          description: No session
+        '403':
+          description: Forbidden
+      security:
+      - cookieAuth: []
+      - bearerAuth: []
+  /api/cloud/credentials:
+    get:
+      tags:
+      - Cloud
+      summary: Cloud credentials (without secrets)
+      description: Global admin, or admin on cluster {id} on cluster routes.
+      responses:
+        '200':
+          description: OK
+        '401':
+          description: No session
+        '403':
+          description: Forbidden
+      security:
+      - cookieAuth: []
+      - bearerAuth: []
+    post:
+      tags:
+      - Cloud
+      summary: Create a cloud credential (validated against the provider)
+      description: Global admin, or admin on cluster {id} on cluster routes. With a cookie, requires the X-CSRF-Token
+        header (value of the bayplan_csrf cookie); not with an API token.
+      responses:
+        '200':
+          description: OK
+        '401':
+          description: No session
+        '403':
+          description: Forbidden
+      security:
+      - cookieAuth: []
+      - bearerAuth: []
+      requestBody:
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                name: {}
+  /api/cloud/credentials/{id}:
+    patch:
+      tags:
+      - Cloud
+      summary: Edit a cloud credential
+      description: Global admin, or admin on cluster {id} on cluster routes. With a cookie, requires the X-CSRF-Token
+        header (value of the bayplan_csrf cookie); not with an API token.
+      responses:
+        '200':
+          description: OK
+        '401':
+          description: No session
+        '403':
+          description: Forbidden
+      security:
+      - cookieAuth: []
+      - bearerAuth: []
+      requestBody:
+        content:
+          application/json:
+            schema:
+              type: object
+      parameters:
+      - name: id
+        in: path
+        required: true
+        schema:
+          type: integer
+    delete:
+      tags:
+      - Cloud
+      summary: Delete a cloud credential (409 if it has clusters)
+      description: Global admin, or admin on cluster {id} on cluster routes. With a cookie, requires the X-CSRF-Token
+        header (value of the bayplan_csrf cookie); not with an API token.
+      responses:
+        '200':
+          description: OK
+        '401':
+          description: No session
+        '403':
+          description: Forbidden
+      security:
+      - cookieAuth: []
+      - bearerAuth: []
+      parameters:
+      - name: id
+        in: path
+        required: true
+        schema:
+          type: integer
+  /api/cloud/credentials/{id}/clusters:
+    get:
+      tags:
+      - Cloud
+      summary: Discover the credential's EKS/AKS/GKE clusters
+      description: Global admin, or admin on cluster {id} on cluster routes.
+      responses:
+        '200':
+          description: OK
+        '401':
+          description: No session
+        '403':
+          description: Forbidden
+        '503':
+          description: Cluster not synced or kind unavailable (the body carries the reason)
+      security:
+      - cookieAuth: []
+      - bearerAuth: []
+      parameters:
+      - name: id
+        in: path
+        required: true
+        schema:
+          type: integer
+  /api/clusters/{id}/namespaces:
+    get:
+      tags:
+      - Resources
+      summary: Namespaces (with age)
+      description: Readonly role or higher on cluster {id}.
+      responses:
+        '200':
+          description: OK
+        '401':
+          description: No session
+        '403':
+          description: Forbidden
+        '503':
+          description: Cluster not synced or kind unavailable (the body carries the reason)
+      security:
+      - cookieAuth: []
+      - bearerAuth: []
+      parameters:
+      - name: id
+        in: path
+        required: true
+        schema:
+          type: integer
+  /api/clusters/{id}/nodes:
+    get:
+      tags:
+      - Resources
+      summary: Nodes
+      description: Readonly role or higher on cluster {id}.
+      responses:
+        '200':
+          description: OK
+        '401':
+          description: No session
+        '403':
+          description: Forbidden
+        '503':
+          description: Cluster not synced or kind unavailable (the body carries the reason)
+      security:
+      - cookieAuth: []
+      - bearerAuth: []
+      parameters:
+      - name: id
+        in: path
+        required: true
+        schema:
+          type: integer
+  /api/clusters/{id}/pods:
+    get:
+      tags:
+      - Resources
+      summary: Pods
+      description: Readonly role or higher on cluster {id}.
+      responses:
+        '200':
+          description: OK
+        '401':
+          description: No session
+        '403':
+          description: Forbidden
+        '503':
+          description: Cluster not synced or kind unavailable (the body carries the reason)
+      security:
+      - cookieAuth: []
+      - bearerAuth: []
+      parameters:
+      - name: id
+        in: path
+        required: true
+        schema:
+          type: integer
+      - name: namespace
+        in: query
+        required: false
+        schema:
+          type: string
+        description: Comma-separated list; empty = all.
+  /api/clusters/{id}/deployments:
+    get:
+      tags:
+      - Resources
+      summary: Deployments
+      description: Readonly role or higher on cluster {id}.
+      responses:
+        '200':
+          description: OK
+        '401':
+          description: No session
+        '403':
+          description: Forbidden
+        '503':
+          description: Cluster not synced or kind unavailable (the body carries the reason)
+      security:
+      - cookieAuth: []
+      - bearerAuth: []
+      parameters:
+      - name: id
+        in: path
+        required: true
+        schema:
+          type: integer
+      - name: namespace
+        in: query
+        required: false
+        schema:
+          type: string
+        description: Comma-separated list; empty = all.
+  /api/clusters/{id}/deployments/{namespace}/{name}/pods:
+    get:
+      tags:
+      - Resources
+      summary: Pods of a deployment
+      description: Readonly role or higher on cluster {id}.
+      responses:
+        '200':
+          description: OK
+        '401':
+          description: No session
+        '403':
+          description: Forbidden
+        '503':
+          description: Cluster not synced or kind unavailable (the body carries the reason)
+      security:
+      - cookieAuth: []
+      - bearerAuth: []
+      parameters:
+      - name: id
+        in: path
+        required: true
+        schema:
+          type: integer
+      - name: namespace
+        in: path
+        required: true
+        schema:
+          type: string
+      - name: name
+        in: path
+        required: true
+        schema:
+          type: string
+  /api/clusters/{id}/statefulsets:
+    get:
+      tags:
+      - Resources
+      summary: StatefulSets
+      description: Readonly role or higher on cluster {id}.
+      responses:
+        '200':
+          description: OK
+        '401':
+          description: No session
+        '403':
+          description: Forbidden
+        '503':
+          description: Cluster not synced or kind unavailable (the body carries the reason)
+      security:
+      - cookieAuth: []
+      - bearerAuth: []
+      parameters:
+      - name: id
+        in: path
+        required: true
+        schema:
+          type: integer
+      - name: namespace
+        in: query
+        required: false
+        schema:
+          type: string
+        description: Comma-separated list; empty = all.
+  /api/clusters/{id}/daemonsets:
+    get:
+      tags:
+      - Resources
+      summary: DaemonSets
+      description: Readonly role or higher on cluster {id}.
+      responses:
+        '200':
+          description: OK
+        '401':
+          description: No session
+        '403':
+          description: Forbidden
+        '503':
+          description: Cluster not synced or kind unavailable (the body carries the reason)
+      security:
+      - cookieAuth: []
+      - bearerAuth: []
+      parameters:
+      - name: id
+        in: path
+        required: true
+        schema:
+          type: integer
+      - name: namespace
+        in: query
+        required: false
+        schema:
+          type: string
+        description: Comma-separated list; empty = all.
+  /api/clusters/{id}/services:
+    get:
+      tags:
+      - Resources
+      summary: Services
+      description: Readonly role or higher on cluster {id}.
+      responses:
+        '200':
+          description: OK
+        '401':
+          description: No session
+        '403':
+          description: Forbidden
+        '503':
+          description: Cluster not synced or kind unavailable (the body carries the reason)
+      security:
+      - cookieAuth: []
+      - bearerAuth: []
+      parameters:
+      - name: id
+        in: path
+        required: true
+        schema:
+          type: integer
+      - name: namespace
+        in: query
+        required: false
+        schema:
+          type: string
+        description: Comma-separated list; empty = all.
+  /api/clusters/{id}/events:
+    get:
+      tags:
+      - Resources
+      summary: Events (filters type, since, from, to)
+      description: Readonly role or higher on cluster {id}.
+      responses:
+        '200':
+          description: OK
+        '401':
+          description: No session
+        '403':
+          description: Forbidden
+        '503':
+          description: Cluster not synced or kind unavailable (the body carries the reason)
+      security:
+      - cookieAuth: []
+      - bearerAuth: []
+      parameters:
+      - name: id
+        in: path
+        required: true
+        schema:
+          type: integer
+      - name: namespace
+        in: query
+        required: false
+        schema:
+          type: string
+        description: Comma-separated list; empty = all.
+  /api/clusters/{id}/configmaps:
+    get:
+      tags:
+      - Resources
+      summary: ConfigMaps
+      description: Readonly role or higher on cluster {id}.
+      responses:
+        '200':
+          description: OK
+        '401':
+          description: No session
+        '403':
+          description: Forbidden
+        '503':
+          description: Cluster not synced or kind unavailable (the body carries the reason)
+      security:
+      - cookieAuth: []
+      - bearerAuth: []
+      parameters:
+      - name: id
+        in: path
+        required: true
+        schema:
+          type: integer
+      - name: namespace
+        in: query
+        required: false
+        schema:
+          type: string
+        description: Comma-separated list; empty = all.
+  /api/clusters/{id}/secrets:
+    get:
+      tags:
+      - Resources
+      summary: Secrets (without values)
+      description: Readonly role or higher on cluster {id}.
+      responses:
+        '200':
+          description: OK
+        '401':
+          description: No session
+        '403':
+          description: Forbidden
+        '503':
+          description: Cluster not synced or kind unavailable (the body carries the reason)
+      security:
+      - cookieAuth: []
+      - bearerAuth: []
+      parameters:
+      - name: id
+        in: path
+        required: true
+        schema:
+          type: integer
+      - name: namespace
+        in: query
+        required: false
+        schema:
+          type: string
+        description: Comma-separated list; empty = all.
+  /api/clusters/{id}/serviceaccounts:
+    get:
+      tags:
+      - Resources
+      summary: ServiceAccounts
+      description: Readonly role or higher on cluster {id}.
+      responses:
+        '200':
+          description: OK
+        '401':
+          description: No session
+        '403':
+          description: Forbidden
+        '503':
+          description: Cluster not synced or kind unavailable (the body carries the reason)
+      security:
+      - cookieAuth: []
+      - bearerAuth: []
+      parameters:
+      - name: id
+        in: path
+        required: true
+        schema:
+          type: integer
+      - name: namespace
+        in: query
+        required: false
+        schema:
+          type: string
+        description: Comma-separated list; empty = all.
+  /api/clusters/{id}/ingresses:
+    get:
+      tags:
+      - Resources
+      summary: Ingresses
+      description: Readonly role or higher on cluster {id}.
+      responses:
+        '200':
+          description: OK
+        '401':
+          description: No session
+        '403':
+          description: Forbidden
+        '503':
+          description: Cluster not synced or kind unavailable (the body carries the reason)
+      security:
+      - cookieAuth: []
+      - bearerAuth: []
+      parameters:
+      - name: id
+        in: path
+        required: true
+        schema:
+          type: integer
+      - name: namespace
+        in: query
+        required: false
+        schema:
+          type: string
+        description: Comma-separated list; empty = all.
+  /api/clusters/{id}/networkpolicies:
+    get:
+      tags:
+      - Resources
+      summary: NetworkPolicies
+      description: Readonly role or higher on cluster {id}.
+      responses:
+        '200':
+          description: OK
+        '401':
+          description: No session
+        '403':
+          description: Forbidden
+        '503':
+          description: Cluster not synced or kind unavailable (the body carries the reason)
+      security:
+      - cookieAuth: []
+      - bearerAuth: []
+      parameters:
+      - name: id
+        in: path
+        required: true
+        schema:
+          type: integer
+      - name: namespace
+        in: query
+        required: false
+        schema:
+          type: string
+        description: Comma-separated list; empty = all.
+  /api/clusters/{id}/persistentvolumeclaims:
+    get:
+      tags:
+      - Resources
+      summary: PVCs
+      description: Readonly role or higher on cluster {id}.
+      responses:
+        '200':
+          description: OK
+        '401':
+          description: No session
+        '403':
+          description: Forbidden
+        '503':
+          description: Cluster not synced or kind unavailable (the body carries the reason)
+      security:
+      - cookieAuth: []
+      - bearerAuth: []
+      parameters:
+      - name: id
+        in: path
+        required: true
+        schema:
+          type: integer
+      - name: namespace
+        in: query
+        required: false
+        schema:
+          type: string
+        description: Comma-separated list; empty = all.
+  /api/clusters/{id}/persistentvolumes:
+    get:
+      tags:
+      - Resources
+      summary: PVs
+      description: Readonly role or higher on cluster {id}.
+      responses:
+        '200':
+          description: OK
+        '401':
+          description: No session
+        '403':
+          description: Forbidden
+        '503':
+          description: Cluster not synced or kind unavailable (the body carries the reason)
+      security:
+      - cookieAuth: []
+      - bearerAuth: []
+      parameters:
+      - name: id
+        in: path
+        required: true
+        schema:
+          type: integer
+  /api/clusters/{id}/storageclasses:
+    get:
+      tags:
+      - Resources
+      summary: StorageClasses
+      description: Readonly role or higher on cluster {id}.
+      responses:
+        '200':
+          description: OK
+        '401':
+          description: No session
+        '403':
+          description: Forbidden
+        '503':
+          description: Cluster not synced or kind unavailable (the body carries the reason)
+      security:
+      - cookieAuth: []
+      - bearerAuth: []
+      parameters:
+      - name: id
+        in: path
+        required: true
+        schema:
+          type: integer
+  /api/clusters/{id}/jobs:
+    get:
+      tags:
+      - Resources
+      summary: Jobs
+      description: Readonly role or higher on cluster {id}.
+      responses:
+        '200':
+          description: OK
+        '401':
+          description: No session
+        '403':
+          description: Forbidden
+        '503':
+          description: Cluster not synced or kind unavailable (the body carries the reason)
+      security:
+      - cookieAuth: []
+      - bearerAuth: []
+      parameters:
+      - name: id
+        in: path
+        required: true
+        schema:
+          type: integer
+      - name: namespace
+        in: query
+        required: false
+        schema:
+          type: string
+        description: Comma-separated list; empty = all.
+  /api/clusters/{id}/cronjobs:
+    get:
+      tags:
+      - Resources
+      summary: CronJobs
+      description: Readonly role or higher on cluster {id}.
+      responses:
+        '200':
+          description: OK
+        '401':
+          description: No session
+        '403':
+          description: Forbidden
+        '503':
+          description: Cluster not synced or kind unavailable (the body carries the reason)
+      security:
+      - cookieAuth: []
+      - bearerAuth: []
+      parameters:
+      - name: id
+        in: path
+        required: true
+        schema:
+          type: integer
+      - name: namespace
+        in: query
+        required: false
+        schema:
+          type: string
+        description: Comma-separated list; empty = all.
+  /api/clusters/{id}/horizontalpodautoscalers:
+    get:
+      tags:
+      - Resources
+      summary: HPAs
+      description: Readonly role or higher on cluster {id}.
+      responses:
+        '200':
+          description: OK
+        '401':
+          description: No session
+        '403':
+          description: Forbidden
+        '503':
+          description: Cluster not synced or kind unavailable (the body carries the reason)
+      security:
+      - cookieAuth: []
+      - bearerAuth: []
+      parameters:
+      - name: id
+        in: path
+        required: true
+        schema:
+          type: integer
+      - name: namespace
+        in: query
+        required: false
+        schema:
+          type: string
+        description: Comma-separated list; empty = all.
+  /api/clusters/{id}/resourcequotas:
+    get:
+      tags:
+      - Resources
+      summary: ResourceQuotas with used/hard
+      description: Readonly role or higher on cluster {id}.
+      responses:
+        '200':
+          description: OK
+        '401':
+          description: No session
+        '403':
+          description: Forbidden
+        '503':
+          description: Cluster not synced or kind unavailable (the body carries the reason)
+      security:
+      - cookieAuth: []
+      - bearerAuth: []
+      parameters:
+      - name: id
+        in: path
+        required: true
+        schema:
+          type: integer
+      - name: namespace
+        in: query
+        required: false
+        schema:
+          type: string
+        description: Comma-separated list; empty = all.
+  /api/clusters/{id}/limitranges:
+    get:
+      tags:
+      - Resources
+      summary: LimitRanges
+      description: Readonly role or higher on cluster {id}.
+      responses:
+        '200':
+          description: OK
+        '401':
+          description: No session
+        '403':
+          description: Forbidden
+        '503':
+          description: Cluster not synced or kind unavailable (the body carries the reason)
+      security:
+      - cookieAuth: []
+      - bearerAuth: []
+      parameters:
+      - name: id
+        in: path
+        required: true
+        schema:
+          type: integer
+      - name: namespace
+        in: query
+        required: false
+        schema:
+          type: string
+        description: Comma-separated list; empty = all.
+  /api/clusters/{id}/resources/{kind}/{namespace}/{name}/yaml:
+    get:
+      tags:
+      - Resources
+      summary: YAML of an object (kind in plural; namespace '-' when not applicable). Secret values only for admin
+      description: Readonly role or higher on cluster {id}.
+      responses:
+        '200':
+          description: OK
+        '401':
+          description: No session
+        '403':
+          description: Forbidden
+        '503':
+          description: Cluster not synced or kind unavailable (the body carries the reason)
+      security:
+      - cookieAuth: []
+      - bearerAuth: []
+      parameters:
+      - name: id
+        in: path
+        required: true
+        schema:
+          type: integer
+      - name: kind
+        in: path
+        required: true
+        schema:
+          type: string
+      - name: namespace
+        in: path
+        required: true
+        schema:
+          type: string
+      - name: name
+        in: path
+        required: true
+        schema:
+          type: string
+  /api/clusters/{id}/apply:
+    post:
+      tags:
+      - Writes
+      summary: Server-side apply of one or more manifests
+      description: Editor role or higher on cluster {id} (global admin to add registries/repos). With a cookie, requires
+        the X-CSRF-Token header (value of the bayplan_csrf cookie); not with an API token.
+      responses:
+        '200':
+          description: OK
+        '401':
+          description: No session
+        '403':
+          description: Forbidden
+        '503':
+          description: Cluster not synced or kind unavailable (the body carries the reason)
+        '502':
+          description: Cluster API server error, verbatim (RBAC, admission…)
+      security:
+      - cookieAuth: []
+      - bearerAuth: []
+      requestBody:
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                yaml: {}
+      parameters:
+      - name: id
+        in: path
+        required: true
+        schema:
+          type: integer
+  /api/clusters/{id}/resources/{kind}/{namespace}/{name}:
+    delete:
+      tags:
+      - Writes
+      summary: Delete an object
+      description: Global admin, or admin on cluster {id} on cluster routes. With a cookie, requires the X-CSRF-Token
+        header (value of the bayplan_csrf cookie); not with an API token.
+      responses:
+        '200':
+          description: OK
+        '401':
+          description: No session
+        '403':
+          description: Forbidden
+        '503':
+          description: Cluster not synced or kind unavailable (the body carries the reason)
+        '502':
+          description: Cluster API server error, verbatim (RBAC, admission…)
+      security:
+      - cookieAuth: []
+      - bearerAuth: []
+      parameters:
+      - name: id
+        in: path
+        required: true
+        schema:
+          type: integer
+      - name: kind
+        in: path
+        required: true
+        schema:
+          type: string
+      - name: namespace
+        in: path
+        required: true
+        schema:
+          type: string
+      - name: name
+        in: path
+        required: true
+        schema:
+          type: string
+  /api/clusters/{id}/{kind}/{namespace}/{name}/restart:
+    post:
+      tags:
+      - Writes
+      summary: Rollout restart (deployments, statefulsets, daemonsets)
+      description: Editor role or higher on cluster {id} (global admin to add registries/repos). With a cookie, requires
+        the X-CSRF-Token header (value of the bayplan_csrf cookie); not with an API token.
+      responses:
+        '200':
+          description: OK
+        '401':
+          description: No session
+        '403':
+          description: Forbidden
+        '503':
+          description: Cluster not synced or kind unavailable (the body carries the reason)
+        '502':
+          description: Cluster API server error, verbatim (RBAC, admission…)
+      security:
+      - cookieAuth: []
+      - bearerAuth: []
+      requestBody:
+        content:
+          application/json:
+            schema:
+              type: object
+      parameters:
+      - name: id
+        in: path
+        required: true
+        schema:
+          type: integer
+      - name: kind
+        in: path
+        required: true
+        schema:
+          type: string
+      - name: namespace
+        in: path
+        required: true
+        schema:
+          type: string
+      - name: name
+        in: path
+        required: true
+        schema:
+          type: string
+  /api/clusters/{id}/{kind}/{namespace}/{name}/scale:
+    post:
+      tags:
+      - Writes
+      summary: Scale (deployments, statefulsets)
+      description: Editor role or higher on cluster {id} (global admin to add registries/repos). With a cookie, requires
+        the X-CSRF-Token header (value of the bayplan_csrf cookie); not with an API token.
+      responses:
+        '200':
+          description: OK
+        '401':
+          description: No session
+        '403':
+          description: Forbidden
+        '503':
+          description: Cluster not synced or kind unavailable (the body carries the reason)
+        '502':
+          description: Cluster API server error, verbatim (RBAC, admission…)
+      security:
+      - cookieAuth: []
+      - bearerAuth: []
+      requestBody:
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                replicas: {}
+      parameters:
+      - name: id
+        in: path
+        required: true
+        schema:
+          type: integer
+      - name: kind
+        in: path
+        required: true
+        schema:
+          type: string
+      - name: namespace
+        in: path
+        required: true
+        schema:
+          type: string
+      - name: name
+        in: path
+        required: true
+        schema:
+          type: string
+  /api/clusters/{id}/deployments/{namespace}/{name}/rollback:
+    post:
+      tags:
+      - Writes
+      summary: Roll back to the previous revision
+      description: Editor role or higher on cluster {id} (global admin to add registries/repos). With a cookie, requires
+        the X-CSRF-Token header (value of the bayplan_csrf cookie); not with an API token.
+      responses:
+        '200':
+          description: OK
+        '401':
+          description: No session
+        '403':
+          description: Forbidden
+        '503':
+          description: Cluster not synced or kind unavailable (the body carries the reason)
+        '502':
+          description: Cluster API server error, verbatim (RBAC, admission…)
+      security:
+      - cookieAuth: []
+      - bearerAuth: []
+      requestBody:
+        content:
+          application/json:
+            schema:
+              type: object
+      parameters:
+      - name: id
+        in: path
+        required: true
+        schema:
+          type: integer
+      - name: namespace
+        in: path
+        required: true
+        schema:
+          type: string
+      - name: name
+        in: path
+        required: true
+        schema:
+          type: string
+  /api/clusters/{id}/nodes/{name}/cordon:
+    post:
+      tags:
+      - Writes
+      summary: Cordon / uncordon
+      description: Editor role or higher on cluster {id} (global admin to add registries/repos). With a cookie, requires
+        the X-CSRF-Token header (value of the bayplan_csrf cookie); not with an API token.
+      responses:
+        '200':
+          description: OK
+        '401':
+          description: No session
+        '403':
+          description: Forbidden
+        '503':
+          description: Cluster not synced or kind unavailable (the body carries the reason)
+        '502':
+          description: Cluster API server error, verbatim (RBAC, admission…)
+      security:
+      - cookieAuth: []
+      - bearerAuth: []
+      requestBody:
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                cordon: {}
+      parameters:
+      - name: id
+        in: path
+        required: true
+        schema:
+          type: integer
+      - name: name
+        in: path
+        required: true
+        schema:
+          type: string
+  /api/clusters/{id}/nodes/{name}/drain:
+    post:
+      tags:
+      - Writes
+      summary: Drain a node (Eviction API)
+      description: Global admin, or admin on cluster {id} on cluster routes. With a cookie, requires the X-CSRF-Token
+        header (value of the bayplan_csrf cookie); not with an API token.
+      responses:
+        '200':
+          description: OK
+        '401':
+          description: No session
+        '403':
+          description: Forbidden
+        '503':
+          description: Cluster not synced or kind unavailable (the body carries the reason)
+        '502':
+          description: Cluster API server error, verbatim (RBAC, admission…)
+      security:
+      - cookieAuth: []
+      - bearerAuth: []
+      requestBody:
+        content:
+          application/json:
+            schema:
+              type: object
+      parameters:
+      - name: id
+        in: path
+        required: true
+        schema:
+          type: integer
+      - name: name
+        in: path
+        required: true
+        schema:
+          type: string
+  /api/clusters/{id}/namespaces/{namespace}/quota:
+    post:
+      tags:
+      - Writes
+      summary: 'Namespace quota: Namespace + ResourceQuota + LimitRange'
+      description: Editor role or higher on cluster {id} (global admin to add registries/repos). With a cookie, requires
+        the X-CSRF-Token header (value of the bayplan_csrf cookie); not with an API token.
+      responses:
+        '200':
+          description: OK
+        '401':
+          description: No session
+        '403':
+          description: Forbidden
+        '503':
+          description: Cluster not synced or kind unavailable (the body carries the reason)
+        '502':
+          description: Cluster API server error, verbatim (RBAC, admission…)
+      security:
+      - cookieAuth: []
+      - bearerAuth: []
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/NamespaceQuotaInput'
+      parameters:
+      - name: id
+        in: path
+        required: true
+        schema:
+          type: integer
+      - name: namespace
+        in: path
+        required: true
+        schema:
+          type: string
+  /api/helm/repos:
+    get:
+      tags:
+      - Helm
+      summary: Chart repositories
+      description: Any signed-in user.
+      responses:
+        '200':
+          description: OK
+        '401':
+          description: No session
+        '403':
+          description: Forbidden
+      security:
+      - cookieAuth: []
+      - bearerAuth: []
+    post:
+      tags:
+      - Helm
+      summary: Add a repository (HTTP or OCI)
+      description: Global admin, or admin on cluster {id} on cluster routes. With a cookie, requires the X-CSRF-Token
+        header (value of the bayplan_csrf cookie); not with an API token.
+      responses:
+        '200':
+          description: OK
+        '401':
+          description: No session
+        '403':
+          description: Forbidden
+      security:
+      - cookieAuth: []
+      - bearerAuth: []
+      requestBody:
+        content:
+          application/json:
+            schema:
+              type: object
+  /api/helm/repos/{id}:
+    delete:
+      tags:
+      - Helm
+      summary: Remove a repository
+      description: Global admin, or admin on cluster {id} on cluster routes. With a cookie, requires the X-CSRF-Token
+        header (value of the bayplan_csrf cookie); not with an API token.
+      responses:
+        '200':
+          description: OK
+        '401':
+          description: No session
+        '403':
+          description: Forbidden
+      security:
+      - cookieAuth: []
+      - bearerAuth: []
+      parameters:
+      - name: id
+        in: path
+        required: true
+        schema:
+          type: integer
+  /api/helm/repos/{repoId}/charts:
+    get:
+      tags:
+      - Helm
+      summary: Search charts (q)
+      description: Any signed-in user.
+      responses:
+        '200':
+          description: OK
+        '401':
+          description: No session
+        '403':
+          description: Forbidden
+      security:
+      - cookieAuth: []
+      - bearerAuth: []
+      parameters:
+      - name: repoId
+        in: path
+        required: true
+        schema:
+          type: integer
+  /api/helm/repos/{repoId}/charts/{chart}:
+    get:
+      tags:
+      - Helm
+      summary: Chart details (versions, values)
+      description: Any signed-in user.
+      responses:
+        '200':
+          description: OK
+        '401':
+          description: No session
+        '403':
+          description: Forbidden
+      security:
+      - cookieAuth: []
+      - bearerAuth: []
+      parameters:
+      - name: repoId
+        in: path
+        required: true
+        schema:
+          type: integer
+      - name: chart
+        in: path
+        required: true
+        schema:
+          type: string
+  /api/clusters/{id}/helm/releases:
+    get:
+      tags:
+      - Helm
+      summary: Installed releases
+      description: Readonly role or higher on cluster {id}.
+      responses:
+        '200':
+          description: OK
+        '401':
+          description: No session
+        '403':
+          description: Forbidden
+        '503':
+          description: Cluster not synced or kind unavailable (the body carries the reason)
+      security:
+      - cookieAuth: []
+      - bearerAuth: []
+      parameters:
+      - name: id
+        in: path
+        required: true
+        schema:
+          type: integer
+      - name: namespace
+        in: query
+        required: false
+        schema:
+          type: string
+        description: Comma-separated list; empty = all.
+    post:
+      tags:
+      - Helm
+      summary: Install a chart (optional dryRun)
+      description: Editor role or higher on cluster {id} (global admin to add registries/repos). With a cookie, requires
+        the X-CSRF-Token header (value of the bayplan_csrf cookie); not with an API token.
+      responses:
+        '200':
+          description: OK
+        '401':
+          description: No session
+        '403':
+          description: Forbidden
+        '503':
+          description: Cluster not synced or kind unavailable (the body carries the reason)
+        '502':
+          description: Cluster API server error, verbatim (RBAC, admission…)
+      security:
+      - cookieAuth: []
+      - bearerAuth: []
+      requestBody:
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                repoId: {}
+      parameters:
+      - name: id
+        in: path
+        required: true
+        schema:
+          type: integer
+  /api/clusters/{id}/helm/releases/{namespace}/{name}:
+    get:
+      tags:
+      - Helm
+      summary: Release details and history
+      description: Readonly role or higher on cluster {id}.
+      responses:
+        '200':
+          description: OK
+        '401':
+          description: No session
+        '403':
+          description: Forbidden
+        '503':
+          description: Cluster not synced or kind unavailable (the body carries the reason)
+      security:
+      - cookieAuth: []
+      - bearerAuth: []
+      parameters:
+      - name: id
+        in: path
+        required: true
+        schema:
+          type: integer
+      - name: namespace
+        in: path
+        required: true
+        schema:
+          type: string
+      - name: name
+        in: path
+        required: true
+        schema:
+          type: string
+    put:
+      tags:
+      - Helm
+      summary: Upgrade a release
+      description: Editor role or higher on cluster {id} (global admin to add registries/repos). With a cookie, requires
+        the X-CSRF-Token header (value of the bayplan_csrf cookie); not with an API token.
+      responses:
+        '200':
+          description: OK
+        '401':
+          description: No session
+        '403':
+          description: Forbidden
+        '503':
+          description: Cluster not synced or kind unavailable (the body carries the reason)
+        '502':
+          description: Cluster API server error, verbatim (RBAC, admission…)
+      security:
+      - cookieAuth: []
+      - bearerAuth: []
+      requestBody:
+        content:
+          application/json:
+            schema:
+              type: object
+      parameters:
+      - name: id
+        in: path
+        required: true
+        schema:
+          type: integer
+      - name: namespace
+        in: path
+        required: true
+        schema:
+          type: string
+      - name: name
+        in: path
+        required: true
+        schema:
+          type: string
+    delete:
+      tags:
+      - Helm
+      summary: Uninstall
+      description: Global admin, or admin on cluster {id} on cluster routes. With a cookie, requires the X-CSRF-Token
+        header (value of the bayplan_csrf cookie); not with an API token.
+      responses:
+        '200':
+          description: OK
+        '401':
+          description: No session
+        '403':
+          description: Forbidden
+        '503':
+          description: Cluster not synced or kind unavailable (the body carries the reason)
+        '502':
+          description: Cluster API server error, verbatim (RBAC, admission…)
+      security:
+      - cookieAuth: []
+      - bearerAuth: []
+      parameters:
+      - name: id
+        in: path
+        required: true
+        schema:
+          type: integer
+      - name: namespace
+        in: path
+        required: true
+        schema:
+          type: string
+      - name: name
+        in: path
+        required: true
+        schema:
+          type: string
+  /api/clusters/{id}/helm/releases/{namespace}/{name}/rollback:
+    post:
+      tags:
+      - Helm
+      summary: Roll back a release
+      description: Editor role or higher on cluster {id} (global admin to add registries/repos). With a cookie, requires
+        the X-CSRF-Token header (value of the bayplan_csrf cookie); not with an API token.
+      responses:
+        '200':
+          description: OK
+        '401':
+          description: No session
+        '403':
+          description: Forbidden
+        '503':
+          description: Cluster not synced or kind unavailable (the body carries the reason)
+        '502':
+          description: Cluster API server error, verbatim (RBAC, admission…)
+      security:
+      - cookieAuth: []
+      - bearerAuth: []
+      requestBody:
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                revision: {}
+      parameters:
+      - name: id
+        in: path
+        required: true
+        schema:
+          type: integer
+      - name: namespace
+        in: path
+        required: true
+        schema:
+          type: string
+      - name: name
+        in: path
+        required: true
+        schema:
+          type: string
+  /api/clusters/{id}/gitops:
+    get:
+      tags:
+      - GitOps
+      summary: GitOps sources of the cluster
+      description: Readonly role or higher on cluster {id}.
+      responses:
+        '200':
+          description: OK
+        '401':
+          description: No session
+        '403':
+          description: Forbidden
+        '503':
+          description: Cluster not synced or kind unavailable (the body carries the reason)
+      security:
+      - cookieAuth: []
+      - bearerAuth: []
+      parameters:
+      - name: id
+        in: path
+        required: true
+        schema:
+          type: integer
+    post:
+      tags:
+      - GitOps
+      summary: Create a source (returns the webhook token ONCE)
+      description: Editor role or higher on cluster {id} (global admin to add registries/repos). With a cookie, requires
+        the X-CSRF-Token header (value of the bayplan_csrf cookie); not with an API token.
+      responses:
+        '200':
+          description: OK
+        '401':
+          description: No session
+        '403':
+          description: Forbidden
+        '503':
+          description: Cluster not synced or kind unavailable (the body carries the reason)
+        '502':
+          description: Cluster API server error, verbatim (RBAC, admission…)
+      security:
+      - cookieAuth: []
+      - bearerAuth: []
+      requestBody:
+        content:
+          application/json:
+            schema:
+              type: object
+      parameters:
+      - name: id
+        in: path
+        required: true
+        schema:
+          type: integer
+  /api/clusters/{id}/gitops/{sid}:
+    patch:
+      tags:
+      - GitOps
+      summary: Pause or resume
+      description: Editor role or higher on cluster {id} (global admin to add registries/repos). With a cookie, requires
+        the X-CSRF-Token header (value of the bayplan_csrf cookie); not with an API token.
+      responses:
+        '200':
+          description: OK
+        '401':
+          description: No session
+        '403':
+          description: Forbidden
+        '503':
+          description: Cluster not synced or kind unavailable (the body carries the reason)
+        '502':
+          description: Cluster API server error, verbatim (RBAC, admission…)
+      security:
+      - cookieAuth: []
+      - bearerAuth: []
+      requestBody:
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                enabled: {}
+      parameters:
+      - name: id
+        in: path
+        required: true
+        schema:
+          type: integer
+      - name: sid
+        in: path
+        required: true
+        schema:
+          type: integer
+    delete:
+      tags:
+      - GitOps
+      summary: Delete a source
+      description: Global admin, or admin on cluster {id} on cluster routes. With a cookie, requires the X-CSRF-Token
+        header (value of the bayplan_csrf cookie); not with an API token.
+      responses:
+        '200':
+          description: OK
+        '401':
+          description: No session
+        '403':
+          description: Forbidden
+        '503':
+          description: Cluster not synced or kind unavailable (the body carries the reason)
+        '502':
+          description: Cluster API server error, verbatim (RBAC, admission…)
+      security:
+      - cookieAuth: []
+      - bearerAuth: []
+      parameters:
+      - name: id
+        in: path
+        required: true
+        schema:
+          type: integer
+      - name: sid
+        in: path
+        required: true
+        schema:
+          type: integer
+  /api/clusters/{id}/gitops/{sid}/sync:
+    post:
+      tags:
+      - GitOps
+      summary: Sync now
+      description: Editor role or higher on cluster {id} (global admin to add registries/repos). With a cookie, requires
+        the X-CSRF-Token header (value of the bayplan_csrf cookie); not with an API token.
+      responses:
+        '200':
+          description: OK
+        '401':
+          description: No session
+        '403':
+          description: Forbidden
+        '503':
+          description: Cluster not synced or kind unavailable (the body carries the reason)
+        '502':
+          description: Cluster API server error, verbatim (RBAC, admission…)
+      security:
+      - cookieAuth: []
+      - bearerAuth: []
+      requestBody:
+        content:
+          application/json:
+            schema:
+              type: object
+      parameters:
+      - name: id
+        in: path
+        required: true
+        schema:
+          type: integer
+      - name: sid
+        in: path
+        required: true
+        schema:
+          type: integer
+  /api/gitops/webhook/{sid}:
+    post:
+      tags:
+      - GitOps
+      summary: Git provider webhook (X-Webhook-Token or X-Hub-Signature-256)
+      description: No authentication.
+      responses:
+        '200':
+          description: OK
+      requestBody:
+        content:
+          application/json:
+            schema:
+              type: object
+      parameters:
+      - name: sid
+        in: path
+        required: true
+        schema:
+          type: integer
+  /api/extensions:
+    get:
+      tags:
+      - Extensions
+      summary: Links to external tools (all)
+      description: Global admin.
+      responses:
+        '200':
+          description: OK
+        '401':
+          description: No session
+        '403':
+          description: Forbidden
+      security:
+      - cookieAuth: []
+      - bearerAuth: []
+    post:
+      tags:
+      - Extensions
+      summary: Create a link
+      description: Global admin. With a cookie, requires the X-CSRF-Token header (value of the bayplan_csrf cookie); not
+        with an API token. Body {clusterId?, name, url, mode (link|embed), minRole, sortOrder}. The URL accepts
+        {cluster}, {clusterId} and {namespace}.
+      responses:
+        '201':
+          description: Created
+        '400':
+          description: Invalid input
+        '401':
+          description: No session
+        '403':
+          description: Forbidden
+      security:
+      - cookieAuth: []
+      - bearerAuth: []
+  /api/extensions/{id}:
+    put:
+      tags:
+      - Extensions
+      summary: Edit a link
+      description: Global admin. With a cookie, requires the X-CSRF-Token header (value of the bayplan_csrf cookie); not
+        with an API token.
+      responses:
+        '200':
+          description: OK
+        '401':
+          description: No session
+        '403':
+          description: Forbidden
+        '404':
+          description: Not found
+      security:
+      - cookieAuth: []
+      - bearerAuth: []
+    delete:
+      tags:
+      - Extensions
+      summary: Delete a link
+      description: Global admin. With a cookie, requires the X-CSRF-Token header (value of the bayplan_csrf cookie); not
+        with an API token.
+      responses:
+        '204':
+          description: Deleted
+        '401':
+          description: No session
+        '403':
+          description: Forbidden
+        '404':
+          description: Not found
+      security:
+      - cookieAuth: []
+      - bearerAuth: []
+    parameters:
+    - name: id
+      in: path
+      required: true
+      schema:
+        type: integer
+  /api/clusters/{id}/extensions:
+    get:
+      tags:
+      - Extensions
+      summary: Links visible in a cluster
+      description: Readonly on the cluster. Returns the cluster's links plus the global ones whose minimum role is
+        covered by the user's role on that cluster.
+      responses:
+        '200':
+          description: OK
+        '401':
+          description: No session
+        '403':
+          description: Forbidden
+      security:
+      - cookieAuth: []
+      - bearerAuth: []
+    parameters:
+    - name: id
+      in: path
+      required: true
+      schema:
+        type: integer
+  /api/clusters/{id}/costs:
+    get:
+      tags:
+      - Resources
+      summary: Estimated cost per namespace
+      description: Readonly on the cluster. Spreads the prices from Settings → Costs (core·hour, GiB·hour) over what is
+        reserved (requests) and, with metrics-server, what is consumed; billable = max(reserved, consumed). Accepts
+        ?namespace=a,b.
+      responses:
+        '200':
+          description: OK
+        '401':
+          description: No session
+        '403':
+          description: Forbidden
+        '503':
+          description: Cluster not synced
+      security:
+      - cookieAuth: []
+      - bearerAuth: []
+    parameters:
+    - name: id
+      in: path
+      required: true
+      schema:
+        type: integer
+  /api/clusters/{id}/metrics-server:
+    post:
+      tags:
+      - Resources
+      summary: Install metrics-server
+      description: Admin on the cluster. Applies the embedded official components.yaml (pinned version) with the user's
+        identity; body {dryRun, kubeletInsecureTLS}. With a cookie, requires the X-CSRF-Token header; not with an API
+        token.
+      responses:
+        '200':
+          description: OK
+        '401':
+          description: No session
+        '403':
+          description: Forbidden
+        '502':
+          description: The API server rejected the apply (RBAC, admission); body carries the reason
+      security:
+      - cookieAuth: []
+      - bearerAuth: []
+    parameters:
+    - name: id
+      in: path
+      required: true
+      schema:
+        type: integer
+  /api/clusters/{id}/metrics-server/manifest:
+    get:
+      tags:
+      - Resources
+      summary: metrics-server manifest (YAML)
+      description: Admin on the cluster. Returns the components.yaml to apply it with kubectl; ?kubeletInsecureTLS=true
+        adds the flag.
+      responses:
+        '200':
+          description: OK (application/yaml)
+        '401':
+          description: No session
+        '403':
+          description: Forbidden
+      security:
+      - cookieAuth: []
+      - bearerAuth: []
+    parameters:
+    - name: id
+      in: path
+      required: true
+      schema:
+        type: integer
+  /api/registries:
+    get:
+      tags:
+      - Registries
+      summary: Image registries (without password)
+      description: Any signed-in user.
+      responses:
+        '200':
+          description: OK
+        '401':
+          description: No session
+        '403':
+          description: Forbidden
+      security:
+      - cookieAuth: []
+      - bearerAuth: []
+    post:
+      tags:
+      - Registries
+      summary: Add a registry (validated against the registry)
+      description: Global admin, or admin on cluster {id} on cluster routes. With a cookie, requires the X-CSRF-Token
+        header (value of the bayplan_csrf cookie); not with an API token.
+      responses:
+        '200':
+          description: OK
+        '401':
+          description: No session
+        '403':
+          description: Forbidden
+      security:
+      - cookieAuth: []
+      - bearerAuth: []
+      requestBody:
+        content:
+          application/json:
+            schema:
+              type: object
+  /api/registries/{id}:
+    patch:
+      tags:
+      - Registries
+      summary: Edit / rotate the credential (resyncs bindings)
+      description: Global admin, or admin on cluster {id} on cluster routes. With a cookie, requires the X-CSRF-Token
+        header (value of the bayplan_csrf cookie); not with an API token.
+      responses:
+        '200':
+          description: OK
+        '401':
+          description: No session
+        '403':
+          description: Forbidden
+      security:
+      - cookieAuth: []
+      - bearerAuth: []
+      requestBody:
+        content:
+          application/json:
+            schema:
+              type: object
+      parameters:
+      - name: id
+        in: path
+        required: true
+        schema:
+          type: integer
+    delete:
+      tags:
+      - Registries
+      summary: Delete a registry and remove its Secrets
+      description: Global admin, or admin on cluster {id} on cluster routes. With a cookie, requires the X-CSRF-Token
+        header (value of the bayplan_csrf cookie); not with an API token.
+      responses:
+        '200':
+          description: OK
+        '401':
+          description: No session
+        '403':
+          description: Forbidden
+      security:
+      - cookieAuth: []
+      - bearerAuth: []
+      parameters:
+      - name: id
+        in: path
+        required: true
+        schema:
+          type: integer
+  /api/clusters/{id}/registries:
+    get:
+      tags:
+      - Registries
+      summary: Bindings of the cluster
+      description: Readonly role or higher on cluster {id}.
+      responses:
+        '200':
+          description: OK
+        '401':
+          description: No session
+        '403':
+          description: Forbidden
+        '503':
+          description: Cluster not synced or kind unavailable (the body carries the reason)
+      security:
+      - cookieAuth: []
+      - bearerAuth: []
+      parameters:
+      - name: id
+        in: path
+        required: true
+        schema:
+          type: integer
+    post:
+      tags:
+      - Registries
+      summary: Bind a registry to a namespace (creates the pull secret)
+      description: Editor role or higher on cluster {id} (global admin to add registries/repos). With a cookie, requires
+        the X-CSRF-Token header (value of the bayplan_csrf cookie); not with an API token.
+      responses:
+        '200':
+          description: OK
+        '401':
+          description: No session
+        '403':
+          description: Forbidden
+        '503':
+          description: Cluster not synced or kind unavailable (the body carries the reason)
+        '502':
+          description: Cluster API server error, verbatim (RBAC, admission…)
+      security:
+      - cookieAuth: []
+      - bearerAuth: []
+      requestBody:
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                registryId: {}
+      parameters:
+      - name: id
+        in: path
+        required: true
+        schema:
+          type: integer
+  /api/clusters/{id}/registries/{bid}/sync:
+    post:
+      tags:
+      - Registries
+      summary: Resync
+      description: Editor role or higher on cluster {id} (global admin to add registries/repos). With a cookie, requires
+        the X-CSRF-Token header (value of the bayplan_csrf cookie); not with an API token.
+      responses:
+        '200':
+          description: OK
+        '401':
+          description: No session
+        '403':
+          description: Forbidden
+        '503':
+          description: Cluster not synced or kind unavailable (the body carries the reason)
+        '502':
+          description: Cluster API server error, verbatim (RBAC, admission…)
+      security:
+      - cookieAuth: []
+      - bearerAuth: []
+      requestBody:
+        content:
+          application/json:
+            schema:
+              type: object
+      parameters:
+      - name: id
+        in: path
+        required: true
+        schema:
+          type: integer
+      - name: bid
+        in: path
+        required: true
+        schema:
+          type: integer
+  /api/clusters/{id}/registries/{bid}:
+    delete:
+      tags:
+      - Registries
+      summary: Unbind (deletes the Secret)
+      description: Editor role or higher on cluster {id} (global admin to add registries/repos). With a cookie, requires
+        the X-CSRF-Token header (value of the bayplan_csrf cookie); not with an API token.
+      responses:
+        '200':
+          description: OK
+        '401':
+          description: No session
+        '403':
+          description: Forbidden
+        '503':
+          description: Cluster not synced or kind unavailable (the body carries the reason)
+        '502':
+          description: Cluster API server error, verbatim (RBAC, admission…)
+      security:
+      - cookieAuth: []
+      - bearerAuth: []
+      parameters:
+      - name: id
+        in: path
+        required: true
+        schema:
+          type: integer
+      - name: bid
+        in: path
+        required: true
+        schema:
+          type: integer
+  /api/clusters/{id}/docker/info:
+    get:
+      tags:
+      - Docker
+      summary: Docker/Podman host information
+      description: Readonly role or higher on cluster {id}.
+      responses:
+        '200':
+          description: OK
+        '401':
+          description: No session
+        '403':
+          description: Forbidden
+        '503':
+          description: Cluster not synced or kind unavailable (the body carries the reason)
+      security:
+      - cookieAuth: []
+      - bearerAuth: []
+      parameters:
+      - name: id
+        in: path
+        required: true
+        schema:
+          type: integer
+  /api/clusters/{id}/docker/containers:
+    get:
+      tags:
+      - Docker
+      summary: Containers
+      description: Readonly role or higher on cluster {id}.
+      responses:
+        '200':
+          description: OK
+        '401':
+          description: No session
+        '403':
+          description: Forbidden
+        '503':
+          description: Cluster not synced or kind unavailable (the body carries the reason)
+      security:
+      - cookieAuth: []
+      - bearerAuth: []
+      parameters:
+      - name: id
+        in: path
+        required: true
+        schema:
+          type: integer
+  /api/clusters/{id}/docker/containers/{cid}/inspect:
+    get:
+      tags:
+      - Docker
+      summary: Inspect
+      description: Readonly role or higher on cluster {id}.
+      responses:
+        '200':
+          description: OK
+        '401':
+          description: No session
+        '403':
+          description: Forbidden
+        '503':
+          description: Cluster not synced or kind unavailable (the body carries the reason)
+      security:
+      - cookieAuth: []
+      - bearerAuth: []
+      parameters:
+      - name: id
+        in: path
+        required: true
+        schema:
+          type: integer
+      - name: cid
+        in: path
+        required: true
+        schema:
+          type: string
+  /api/clusters/{id}/docker/containers/{cid}/action/{action}:
+    post:
+      tags:
+      - Docker
+      summary: start | stop | restart | kill | pause | unpause
+      description: Editor role or higher on cluster {id} (global admin to add registries/repos). With a cookie, requires
+        the X-CSRF-Token header (value of the bayplan_csrf cookie); not with an API token.
+      responses:
+        '200':
+          description: OK
+        '401':
+          description: No session
+        '403':
+          description: Forbidden
+        '503':
+          description: Cluster not synced or kind unavailable (the body carries the reason)
+        '502':
+          description: Cluster API server error, verbatim (RBAC, admission…)
+      security:
+      - cookieAuth: []
+      - bearerAuth: []
+      requestBody:
+        content:
+          application/json:
+            schema:
+              type: object
+      parameters:
+      - name: id
+        in: path
+        required: true
+        schema:
+          type: integer
+      - name: cid
+        in: path
+        required: true
+        schema:
+          type: string
+      - name: action
+        in: path
+        required: true
+        schema:
+          type: string
+  /api/clusters/{id}/docker/containers/{cid}:
+    delete:
+      tags:
+      - Docker
+      summary: Delete a container
+      description: Global admin, or admin on cluster {id} on cluster routes. With a cookie, requires the X-CSRF-Token
+        header (value of the bayplan_csrf cookie); not with an API token.
+      responses:
+        '200':
+          description: OK
+        '401':
+          description: No session
+        '403':
+          description: Forbidden
+        '503':
+          description: Cluster not synced or kind unavailable (the body carries the reason)
+        '502':
+          description: Cluster API server error, verbatim (RBAC, admission…)
+      security:
+      - cookieAuth: []
+      - bearerAuth: []
+      parameters:
+      - name: id
+        in: path
+        required: true
+        schema:
+          type: integer
+      - name: cid
+        in: path
+        required: true
+        schema:
+          type: string
+  /api/clusters/{id}/docker/images:
+    get:
+      tags:
+      - Docker
+      summary: Images
+      description: Readonly role or higher on cluster {id}.
+      responses:
+        '200':
+          description: OK
+        '401':
+          description: No session
+        '403':
+          description: Forbidden
+        '503':
+          description: Cluster not synced or kind unavailable (the body carries the reason)
+      security:
+      - cookieAuth: []
+      - bearerAuth: []
+      parameters:
+      - name: id
+        in: path
+        required: true
+        schema:
+          type: integer
+  /api/clusters/{id}/docker/images/pull:
+    post:
+      tags:
+      - Docker
+      summary: Pull an image
+      description: Editor role or higher on cluster {id} (global admin to add registries/repos). With a cookie, requires
+        the X-CSRF-Token header (value of the bayplan_csrf cookie); not with an API token.
+      responses:
+        '200':
+          description: OK
+        '401':
+          description: No session
+        '403':
+          description: Forbidden
+        '503':
+          description: Cluster not synced or kind unavailable (the body carries the reason)
+        '502':
+          description: Cluster API server error, verbatim (RBAC, admission…)
+      security:
+      - cookieAuth: []
+      - bearerAuth: []
+      requestBody:
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                ref: {}
+      parameters:
+      - name: id
+        in: path
+        required: true
+        schema:
+          type: integer
+  /api/clusters/{id}/docker/images/{iid}:
+    delete:
+      tags:
+      - Docker
+      summary: Delete an image
+      description: Global admin, or admin on cluster {id} on cluster routes. With a cookie, requires the X-CSRF-Token
+        header (value of the bayplan_csrf cookie); not with an API token.
+      responses:
+        '200':
+          description: OK
+        '401':
+          description: No session
+        '403':
+          description: Forbidden
+        '503':
+          description: Cluster not synced or kind unavailable (the body carries the reason)
+        '502':
+          description: Cluster API server error, verbatim (RBAC, admission…)
+      security:
+      - cookieAuth: []
+      - bearerAuth: []
+      parameters:
+      - name: id
+        in: path
+        required: true
+        schema:
+          type: integer
+      - name: iid
+        in: path
+        required: true
+        schema:
+          type: string
+  /api/clusters/{id}/docker/volumes:
+    get:
+      tags:
+      - Docker
+      summary: Volumes
+      description: Readonly role or higher on cluster {id}.
+      responses:
+        '200':
+          description: OK
+        '401':
+          description: No session
+        '403':
+          description: Forbidden
+        '503':
+          description: Cluster not synced or kind unavailable (the body carries the reason)
+      security:
+      - cookieAuth: []
+      - bearerAuth: []
+      parameters:
+      - name: id
+        in: path
+        required: true
+        schema:
+          type: integer
+  /api/clusters/{id}/docker/volumes/{name}:
+    delete:
+      tags:
+      - Docker
+      summary: Delete a volume
+      description: Global admin, or admin on cluster {id} on cluster routes. With a cookie, requires the X-CSRF-Token
+        header (value of the bayplan_csrf cookie); not with an API token.
+      responses:
+        '200':
+          description: OK
+        '401':
+          description: No session
+        '403':
+          description: Forbidden
+        '503':
+          description: Cluster not synced or kind unavailable (the body carries the reason)
+        '502':
+          description: Cluster API server error, verbatim (RBAC, admission…)
+      security:
+      - cookieAuth: []
+      - bearerAuth: []
+      parameters:
+      - name: id
+        in: path
+        required: true
+        schema:
+          type: integer
+      - name: name
+        in: path
+        required: true
+        schema:
+          type: string
+  /api/clusters/{id}/docker/networks:
+    get:
+      tags:
+      - Docker
+      summary: Networks
+      description: Readonly role or higher on cluster {id}.
+      responses:
+        '200':
+          description: OK
+        '401':
+          description: No session
+        '403':
+          description: Forbidden
+        '503':
+          description: Cluster not synced or kind unavailable (the body carries the reason)
+      security:
+      - cookieAuth: []
+      - bearerAuth: []
+      parameters:
+      - name: id
+        in: path
+        required: true
+        schema:
+          type: integer
+  /api/clusters/{id}/docker/networks/{nid}:
+    delete:
+      tags:
+      - Docker
+      summary: Delete a network
+      description: Global admin, or admin on cluster {id} on cluster routes. With a cookie, requires the X-CSRF-Token
+        header (value of the bayplan_csrf cookie); not with an API token.
+      responses:
+        '200':
+          description: OK
+        '401':
+          description: No session
+        '403':
+          description: Forbidden
+        '503':
+          description: Cluster not synced or kind unavailable (the body carries the reason)
+        '502':
+          description: Cluster API server error, verbatim (RBAC, admission…)
+      security:
+      - cookieAuth: []
+      - bearerAuth: []
+      parameters:
+      - name: id
+        in: path
+        required: true
+        schema:
+          type: integer
+      - name: nid
+        in: path
+        required: true
+        schema:
+          type: string
+  /api/notifications/options:
+    get:
+      tags:
+      - Notifications
+      summary: Known reasons and kinds
+      description: Global admin, or admin on cluster {id} on cluster routes.
+      responses:
+        '200':
+          description: OK
+        '401':
+          description: No session
+        '403':
+          description: Forbidden
+      security:
+      - cookieAuth: []
+      - bearerAuth: []
+  /api/notifications/channels:
+    get:
+      tags:
+      - Notifications
+      summary: Channels
+      description: Global admin, or admin on cluster {id} on cluster routes.
+      responses:
+        '200':
+          description: OK
+        '401':
+          description: No session
+        '403':
+          description: Forbidden
+      security:
+      - cookieAuth: []
+      - bearerAuth: []
+    post:
+      tags:
+      - Notifications
+      summary: Create a channel (slack | teams | webhook | email)
+      description: Global admin, or admin on cluster {id} on cluster routes. With a cookie, requires the X-CSRF-Token
+        header (value of the bayplan_csrf cookie); not with an API token.
+      responses:
+        '200':
+          description: OK
+        '401':
+          description: No session
+        '403':
+          description: Forbidden
+      security:
+      - cookieAuth: []
+      - bearerAuth: []
+      requestBody:
+        content:
+          application/json:
+            schema:
+              type: object
+  /api/notifications/channels/{id}:
+    patch:
+      tags:
+      - Notifications
+      summary: Edit a channel
+      description: Global admin, or admin on cluster {id} on cluster routes. With a cookie, requires the X-CSRF-Token
+        header (value of the bayplan_csrf cookie); not with an API token.
+      responses:
+        '200':
+          description: OK
+        '401':
+          description: No session
+        '403':
+          description: Forbidden
+      security:
+      - cookieAuth: []
+      - bearerAuth: []
+      requestBody:
+        content:
+          application/json:
+            schema:
+              type: object
+      parameters:
+      - name: id
+        in: path
+        required: true
+        schema:
+          type: integer
+    delete:
+      tags:
+      - Notifications
+      summary: Delete a channel
+      description: Global admin, or admin on cluster {id} on cluster routes. With a cookie, requires the X-CSRF-Token
+        header (value of the bayplan_csrf cookie); not with an API token.
+      responses:
+        '200':
+          description: OK
+        '401':
+          description: No session
+        '403':
+          description: Forbidden
+      security:
+      - cookieAuth: []
+      - bearerAuth: []
+      parameters:
+      - name: id
+        in: path
+        required: true
+        schema:
+          type: integer
+  /api/notifications/channels/{id}/test:
+    post:
+      tags:
+      - Notifications
+      summary: Send a test message
+      description: Global admin, or admin on cluster {id} on cluster routes. With a cookie, requires the X-CSRF-Token
+        header (value of the bayplan_csrf cookie); not with an API token.
+      responses:
+        '200':
+          description: OK
+        '401':
+          description: No session
+        '403':
+          description: Forbidden
+      security:
+      - cookieAuth: []
+      - bearerAuth: []
+      requestBody:
+        content:
+          application/json:
+            schema:
+              type: object
+      parameters:
+      - name: id
+        in: path
+        required: true
+        schema:
+          type: integer
+  /api/notifications/rules:
+    get:
+      tags:
+      - Notifications
+      summary: Rules
+      description: Global admin, or admin on cluster {id} on cluster routes.
+      responses:
+        '200':
+          description: OK
+        '401':
+          description: No session
+        '403':
+          description: Forbidden
+      security:
+      - cookieAuth: []
+      - bearerAuth: []
+    post:
+      tags:
+      - Notifications
+      summary: Create a rule
+      description: Global admin, or admin on cluster {id} on cluster routes. With a cookie, requires the X-CSRF-Token
+        header (value of the bayplan_csrf cookie); not with an API token.
+      responses:
+        '200':
+          description: OK
+        '401':
+          description: No session
+        '403':
+          description: Forbidden
+      security:
+      - cookieAuth: []
+      - bearerAuth: []
+      requestBody:
+        content:
+          application/json:
+            schema:
+              type: object
+  /api/notifications/rules/{id}:
+    patch:
+      tags:
+      - Notifications
+      summary: Edit a rule
+      description: Global admin, or admin on cluster {id} on cluster routes. With a cookie, requires the X-CSRF-Token
+        header (value of the bayplan_csrf cookie); not with an API token.
+      responses:
+        '200':
+          description: OK
+        '401':
+          description: No session
+        '403':
+          description: Forbidden
+      security:
+      - cookieAuth: []
+      - bearerAuth: []
+      requestBody:
+        content:
+          application/json:
+            schema:
+              type: object
+      parameters:
+      - name: id
+        in: path
+        required: true
+        schema:
+          type: integer
+    delete:
+      tags:
+      - Notifications
+      summary: Delete a rule
+      description: Global admin, or admin on cluster {id} on cluster routes. With a cookie, requires the X-CSRF-Token
+        header (value of the bayplan_csrf cookie); not with an API token.
+      responses:
+        '200':
+          description: OK
+        '401':
+          description: No session
+        '403':
+          description: Forbidden
+      security:
+      - cookieAuth: []
+      - bearerAuth: []
+      parameters:
+      - name: id
+        in: path
+        required: true
+        schema:
+          type: integer
+  /api/notifications/deliveries:
+    get:
+      tags:
+      - Notifications
+      summary: Delivery history (limit)
+      description: Global admin, or admin on cluster {id} on cluster routes.
+      responses:
+        '200':
+          description: OK
+        '401':
+          description: No session
+        '403':
+          description: Forbidden
+      security:
+      - cookieAuth: []
+      - bearerAuth: []
+  /api/users:
+    get:
+      tags:
+      - Users
+      summary: Users and role assignments
+      description: Global admin, or admin on cluster {id} on cluster routes.
+      responses:
+        '200':
+          description: OK
+        '401':
+          description: No session
+        '403':
+          description: Forbidden
+      security:
+      - cookieAuth: []
+      - bearerAuth: []
+    post:
+      tags:
+      - Users
+      summary: Create a local user
+      description: Global admin, or admin on cluster {id} on cluster routes. With a cookie, requires the X-CSRF-Token
+        header (value of the bayplan_csrf cookie); not with an API token.
+      responses:
+        '200':
+          description: OK
+        '401':
+          description: No session
+        '403':
+          description: Forbidden
+      security:
+      - cookieAuth: []
+      - bearerAuth: []
+      requestBody:
+        content:
+          application/json:
+            schema:
+              type: object
+  /api/users/{id}:
+    patch:
+      tags:
+      - Users
+      summary: Edit / disable a user
+      description: Global admin, or admin on cluster {id} on cluster routes. With a cookie, requires the X-CSRF-Token
+        header (value of the bayplan_csrf cookie); not with an API token.
+      responses:
+        '200':
+          description: OK
+        '401':
+          description: No session
+        '403':
+          description: Forbidden
+      security:
+      - cookieAuth: []
+      - bearerAuth: []
+      requestBody:
+        content:
+          application/json:
+            schema:
+              type: object
+      parameters:
+      - name: id
+        in: path
+        required: true
+        schema:
+          type: integer
+    delete:
+      tags:
+      - Users
+      summary: Delete a user
+      description: Global admin, or admin on cluster {id} on cluster routes. With a cookie, requires the X-CSRF-Token
+        header (value of the bayplan_csrf cookie); not with an API token.
+      responses:
+        '200':
+          description: OK
+        '401':
+          description: No session
+        '403':
+          description: Forbidden
+      security:
+      - cookieAuth: []
+      - bearerAuth: []
+      parameters:
+      - name: id
+        in: path
+        required: true
+        schema:
+          type: integer
+  /api/users/{id}/access:
+    get:
+      tags:
+      - Users
+      summary: Effective permissions per cluster and where they come from
+      description: Global admin, or admin on cluster {id} on cluster routes.
+      responses:
+        '200':
+          description: OK
+        '401':
+          description: No session
+        '403':
+          description: Forbidden
+      security:
+      - cookieAuth: []
+      - bearerAuth: []
+      parameters:
+      - name: id
+        in: path
+        required: true
+        schema:
+          type: integer
+  /api/users/{id}/roles:
+    post:
+      tags:
+      - Users
+      summary: Grant a role (global or per cluster)
+      description: Global admin, or admin on cluster {id} on cluster routes. With a cookie, requires the X-CSRF-Token
+        header (value of the bayplan_csrf cookie); not with an API token.
+      responses:
+        '200':
+          description: OK
+        '401':
+          description: No session
+        '403':
+          description: Forbidden
+      security:
+      - cookieAuth: []
+      - bearerAuth: []
+      requestBody:
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                role: {}
+      parameters:
+      - name: id
+        in: path
+        required: true
+        schema:
+          type: integer
+  /api/users/{id}/roles/{assignmentId}:
+    delete:
+      tags:
+      - Users
+      summary: Revoke an assignment
+      description: Global admin, or admin on cluster {id} on cluster routes. With a cookie, requires the X-CSRF-Token
+        header (value of the bayplan_csrf cookie); not with an API token.
+      responses:
+        '200':
+          description: OK
+        '401':
+          description: No session
+        '403':
+          description: Forbidden
+      security:
+      - cookieAuth: []
+      - bearerAuth: []
+      parameters:
+      - name: id
+        in: path
+        required: true
+        schema:
+          type: integer
+      - name: assignmentId
+        in: path
+        required: true
+        schema:
+          type: integer
+  /api/group-mappings:
+    get:
+      tags:
+      - Users
+      summary: SSO group → role mappings
+      description: Global admin, or admin on cluster {id} on cluster routes.
+      responses:
+        '200':
+          description: OK
+        '401':
+          description: No session
+        '403':
+          description: Forbidden
+      security:
+      - cookieAuth: []
+      - bearerAuth: []
+    post:
+      tags:
+      - Users
+      summary: Create a mapping
+      description: Global admin, or admin on cluster {id} on cluster routes. With a cookie, requires the X-CSRF-Token
+        header (value of the bayplan_csrf cookie); not with an API token.
+      responses:
+        '200':
+          description: OK
+        '401':
+          description: No session
+        '403':
+          description: Forbidden
+      security:
+      - cookieAuth: []
+      - bearerAuth: []
+      requestBody:
+        content:
+          application/json:
+            schema:
+              type: object
+  /api/group-mappings/{id}:
+    delete:
+      tags:
+      - Users
+      summary: Delete a mapping
+      description: Global admin, or admin on cluster {id} on cluster routes. With a cookie, requires the X-CSRF-Token
+        header (value of the bayplan_csrf cookie); not with an API token.
+      responses:
+        '200':
+          description: OK
+        '401':
+          description: No session
+        '403':
+          description: Forbidden
+      security:
+      - cookieAuth: []
+      - bearerAuth: []
+      parameters:
+      - name: id
+        in: path
+        required: true
+        schema:
+          type: integer
+  /api/audit:
+    get:
+      tags:
+      - Audit
+      summary: 'Audit log (keyset pagination: cursor)'
+      description: Global admin, or admin on cluster {id} on cluster routes.
+      responses:
+        '200':
+          description: OK
+        '401':
+          description: No session
+        '403':
+          description: Forbidden
+      security:
+      - cookieAuth: []
+      - bearerAuth: []
+  /api/audit/export:
+    get:
+      tags:
+      - Audit
+      summary: Export CSV
+      description: Global admin, or admin on cluster {id} on cluster routes.
+      responses:
+        '200':
+          description: OK
+        '401':
+          description: No session
+        '403':
+          description: Forbidden
+      security:
+      - cookieAuth: []
+      - bearerAuth: []
+  /ws/clusters/{id}/namespaces/{namespace}/pods/{pod}/logs:
+    get:
+      tags:
+      - WebSocket
+      summary: Streaming logs (WebSocket)
+      description: Readonly role or higher on cluster {id}.
+      responses:
+        '200':
+          description: OK
+        '401':
+          description: No session
+        '403':
+          description: Forbidden
+        '503':
+          description: Cluster not synced or kind unavailable (the body carries the reason)
+      security:
+      - cookieAuth: []
+      - bearerAuth: []
+      parameters:
+      - name: id
+        in: path
+        required: true
+        schema:
+          type: integer
+      - name: namespace
+        in: path
+        required: true
+        schema:
+          type: string
+      - name: pod
+        in: path
+        required: true
+        schema:
+          type: string
+  /ws/clusters/{id}/namespaces/{namespace}/pods/{pod}/exec:
+    get:
+      tags:
+      - WebSocket
+      summary: Terminal in a pod (WebSocket)
+      description: Global admin, or admin on cluster {id} on cluster routes.
+      responses:
+        '200':
+          description: OK
+        '401':
+          description: No session
+        '403':
+          description: Forbidden
+        '503':
+          description: Cluster not synced or kind unavailable (the body carries the reason)
+      security:
+      - cookieAuth: []
+      - bearerAuth: []
+      parameters:
+      - name: id
+        in: path
+        required: true
+        schema:
+          type: integer
+      - name: namespace
+        in: path
+        required: true
+        schema:
+          type: string
+      - name: pod
+        in: path
+        required: true
+        schema:
+          type: string
+  /ws/clusters/{id}/kubectl:
+    get:
+      tags:
+      - WebSocket
+      summary: kubectl web shell (WebSocket)
+      description: Global admin, or admin on cluster {id} on cluster routes.
+      responses:
+        '200':
+          description: OK
+        '401':
+          description: No session
+        '403':
+          description: Forbidden
+        '503':
+          description: Cluster not synced or kind unavailable (the body carries the reason)
+      security:
+      - cookieAuth: []
+      - bearerAuth: []
+      parameters:
+      - name: id
+        in: path
+        required: true
+        schema:
+          type: integer
+  /ws/clusters/{id}/docker/containers/{cid}/logs:
+    get:
+      tags:
+      - WebSocket
+      summary: Logs of a Docker container (WebSocket)
+      description: Readonly role or higher on cluster {id}.
+      responses:
+        '200':
+          description: OK
+        '401':
+          description: No session
+        '403':
+          description: Forbidden
+        '503':
+          description: Cluster not synced or kind unavailable (the body carries the reason)
+      security:
+      - cookieAuth: []
+      - bearerAuth: []
+      parameters:
+      - name: id
+        in: path
+        required: true
+        schema:
+          type: integer
+      - name: cid
+        in: path
+        required: true
+        schema:
+          type: string
+  /ws/clusters/{id}/docker/containers/{cid}/exec:
+    get:
+      tags:
+      - WebSocket
+      summary: Terminal in a Docker container (WebSocket)
+      description: Global admin, or admin on cluster {id} on cluster routes.
+      responses:
+        '200':
+          description: OK
+        '401':
+          description: No session
+        '403':
+          description: Forbidden
+        '503':
+          description: Cluster not synced or kind unavailable (the body carries the reason)
+      security:
+      - cookieAuth: []
+      - bearerAuth: []
+      parameters:
+      - name: id
+        in: path
+        required: true
+        schema:
+          type: integer
+      - name: cid
+        in: path
+        required: true
+        schema:
+          type: string
+  /api/admin/server-backup:
+    get:
+      tags:
+      - Backups
+      summary: Schedule and latest runs of the backups of Bayplan's own database
+      description: Global admin. `available` is false if the server has no pg_dump.
+      responses:
+        '200':
+          description: OK
+        '401':
+          description: No session
+        '403':
+          description: Forbidden
+      security:
+      - cookieAuth: []
+      - bearerAuth: []
+    put:
+      tags:
+      - Backups
+      summary: Configure the scheduled backups of Bayplan's own database
+      description: 'Global admin. Body: `{enabled, targetId, intervalHours (1-720), keep (1-365)}`; targetId is a backup target.'
+      responses:
+        '200':
+          description: OK
+        '401':
+          description: No session
+        '403':
+          description: Forbidden
+        '422':
+          description: Invalid schedule or unknown target
+      security:
+      - cookieAuth: []
+      - bearerAuth: []
+  /api/admin/server-backup/run:
+    post:
+      tags:
+      - Backups
+      summary: Back up Bayplan's own database to the configured target now
+      description: Global admin. Synchronous; audited as server_backup.run.
+      responses:
+        '200':
+          description: The finished run
+        '401':
+          description: No session
+        '403':
+          description: Forbidden
+        '502':
+          description: pg_dump or the S3 upload failed (the body says why)
+      security:
+      - cookieAuth: []
+      - bearerAuth: []
+  /api/admin/server-backup/download:
+    get:
+      tags:
+      - Backups
+      summary: Download a pg_dump (custom format) of Bayplan's own database
+      description: 'Global admin, audited as server_backup.download. The encryption key is not inside: a restore
+        (`bayplan restore <file>`) needs it as well.'
+      responses:
+        '200':
+          description: The dump
+          content:
+            application/octet-stream:
+              schema:
+                type: string
+                format: binary
+        '401':
+          description: No session
+        '403':
+          description: Forbidden
+        '404':
+          description: pg_dump is not available on the server
+      security:
+      - cookieAuth: []
+      - bearerAuth: []

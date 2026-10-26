@@ -1,0 +1,94 @@
+# Weekly scan of what is ALREADY published: CVEs keep being disclosed after a
+# release, and an image that was clean on release day stops being clean
+# without anything changing in the repository. It does not republish anything
+# by itself (a tag is never rebuilt behind the operator's back): it opens or
+# updates an issue, and the decision of a patch release stays with a person.
+# When everything is clean again, it closes the issue.
+name: security-scan
+
+on:
+  schedule:
+    - cron: "17 6 * * 1" # Mondays 06:17 UTC
+  workflow_dispatch:
+
+permissions: {}
+
+jobs:
+  scan:
+    # Read-only: Trivy is third-party code and does not run next to a token
+    # that can write anything.
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      packages: read
+    outputs:
+      found: ${{ steps.scan.outputs.found }}
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          persist-credentials: false
+      - uses: actions/setup-go@v7
+        with:
+          go-version: "1.27.x"
+          check-latest: true
+          cache-dependency-path: backend/go.sum
+      - uses: actions/setup-node@v7
+        with:
+          node-version: 24
+      - name: Trivy
+        env:
+          TRIVY_VERSION: 0.76.1
+          TRIVY_SHA256: c7cbe3137fb8a48a17574bede3dd6beb16742d1e9772929940fc90082c39d9c0
+        run: |
+          set -euo pipefail
+          curl -fsSLo trivy.tgz "https://github.com/aquasecurity/trivy/releases/download/v${TRIVY_VERSION}/trivy_${TRIVY_VERSION}_Linux-64bit.tar.gz"
+          echo "${TRIVY_SHA256}  trivy.tgz" | sha256sum -c -
+          mkdir -p "$RUNNER_TEMP/bin" && tar -xzf trivy.tgz -C "$RUNNER_TEMP/bin" trivy
+      # `latest` (last release) and `main` (what the next one will be).
+      - id: scan
+        env:
+          TRIVY_USERNAME: ${{ github.actor }}
+          TRIVY_PASSWORD: ${{ secrets.GITHUB_TOKEN }}
+          REPORT: report.md
+        run: |
+          set -uo pipefail
+          export TRIVY="$RUNNER_TEMP/bin/trivy"
+          repo="ghcr.io/${GITHUB_REPOSITORY}"
+          if scripts/security-scan.sh "$repo:latest" "$repo-agent:latest" "$repo:main" "$repo-agent:main"; then
+            echo "found=false" >>"$GITHUB_OUTPUT"
+          else
+            echo "found=true" >>"$GITHUB_OUTPUT"
+          fi
+          cat report.md >>"$GITHUB_STEP_SUMMARY"
+      - uses: actions/upload-artifact@v7
+        with:
+          name: security-report
+          path: report.md
+
+  report:
+    # Only gh runs here, with the only write permission of the workflow.
+    needs: scan
+    runs-on: ubuntu-latest
+    permissions:
+      issues: write
+    steps:
+      - uses: actions/download-artifact@v8
+        with:
+          name: security-report
+      - env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          FOUND: ${{ needs.scan.outputs.found }}
+        run: |
+          set -euo pipefail
+          title="Security: published images or dependencies need a patch release"
+          gh label create security --repo "$GITHUB_REPOSITORY" --color B60205 --description "Security findings" 2>/dev/null || true
+          issue=$(gh issue list --repo "$GITHUB_REPOSITORY" --state open --label security --search "in:title \"$title\"" --json number --jq '.[0].number // empty')
+          if [ "$FOUND" = "true" ]; then
+            if [ -n "$issue" ]; then
+              gh issue comment "$issue" --repo "$GITHUB_REPOSITORY" --body-file report.md
+            else
+              gh issue create --repo "$GITHUB_REPOSITORY" --title "$title" --label security --body-file report.md
+            fi
+          elif [ -n "$issue" ]; then
+            gh issue close "$issue" --repo "$GITHUB_REPOSITORY" --comment "The weekly scan is clean again (run ${GITHUB_SERVER_URL}/${GITHUB_REPOSITORY}/actions/runs/${GITHUB_RUN_ID})."
+          fi

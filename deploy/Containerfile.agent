@@ -1,0 +1,23 @@
+# Image of the agent deployed inside each cluster managed through the agent
+# connector (see internal/agent). Only the Go binary: it needs neither the
+# frontend nor Postgres.
+FROM --platform=$BUILDPLATFORM docker.io/golang:1.27.3-alpine3.24 AS build
+WORKDIR /src/backend
+COPY backend/go.mod backend/go.sum ./
+RUN go mod download
+COPY backend/ ./
+ARG VERSION=dev
+ARG TARGETARCH=amd64
+RUN rm -rf internal/web/dist && mkdir -p internal/web/dist && \
+    CGO_ENABLED=0 GOOS=linux GOARCH=${TARGETARCH} go build -trimpath -ldflags="-s -w -X main.version=${VERSION}" -o /out/bayplan-agent ./cmd/agent
+
+FROM docker.io/alpine:3.24.3
+LABEL org.opencontainers.image.title="Bayplan agent" \
+      org.opencontainers.image.licenses="Apache-2.0" \
+      org.opencontainers.image.source="https://github.com/bayplan/bayplan"
+RUN apk add --no-cache ca-certificates && addgroup -S -g 10001 agent && adduser -S -u 10001 -G agent agent
+COPY --from=build /out/bayplan-agent /usr/local/bin/bayplan-agent
+# Numeric: the manifest sets runAsNonRoot, and the kubelet refuses to start an
+# image whose USER is a name ("cannot verify user is non-root").
+USER 10001:10001
+ENTRYPOINT ["/usr/local/bin/bayplan-agent"]

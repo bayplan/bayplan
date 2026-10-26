@@ -1,0 +1,48 @@
+[Unit]
+Description=Bayplan - Multi-cluster Kubernetes management
+After=network-online.target bayplan-db.service
+Requires=bayplan-db.service
+
+[Container]
+# `latest` is always the last published release (never main). In production pin
+# a version (ghcr.io/bayplan/bayplan:0.1 follows the 0.1.x patches) and change
+# it on purpose: migrations only go forward. With AutoUpdate=registry,
+# `podman auto-update` (systemd timer podman-auto-update.timer) pulls a new
+# digest of that tag and restarts the unit.
+Image=ghcr.io/bayplan/bayplan:latest
+AutoUpdate=registry
+ContainerName=bayplan
+# Two networks: bayplan-internal to talk to Postgres, and the default
+# network to serve HTTP traffic and reach the API servers of the managed
+# clusters and the identity provider.
+Network=bayplan-internal.network
+Network=podman
+# The binary serves plain HTTP: a TLS reverse proxy goes in front (with
+# TRUSTED_PROXIES pointing at its network so the audit log sees the real IP).
+PublishPort=8080:8080
+
+# Environment file with an ABSOLUTE path (a relative one is not resolved from
+# ~/.config/containers/systemd). Template in deploy/env.example.
+EnvironmentFile=%h/.config/bayplan/bayplan.env
+# Podman secrets that OVERRIDE whatever is in the file. The first two are
+# mandatory; DATABASE_URL must be complete (with the password inside): the
+# binary does not assemble the URL from pieces.
+Secret=bayplan_database_url,type=env,target=DATABASE_URL
+Secret=bayplan_encryption_key_v1,type=env,target=ENCRYPTION_KEY_V1
+
+ReadOnly=true
+Tmpfs=/tmp
+NoNewPrivileges=true
+User=bayplan
+
+HealthCmd=wget -qO- http://localhost:8080/healthz || exit 1
+HealthInterval=15s
+HealthRetries=3
+HealthStartPeriod=10s
+
+[Service]
+Restart=always
+TimeoutStartSec=60
+
+[Install]
+WantedBy=multi-user.target default.target
