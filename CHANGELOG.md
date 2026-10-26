@@ -6,6 +6,12 @@ All published versions are listed here. The format follows
 
 ## [Unreleased]
 
+### Fixed
+
+- Helm chart: the server crash-looped on a fresh install with `localCluster.enabled` (the
+  default) because the local cluster violated the `clusters_has_ca` constraint. Migration `0033`
+  exempts the in-cluster connector, whose CA comes from the pod.
+
 ## [0.1.0] - 2026-10-26
 
 ### Added
