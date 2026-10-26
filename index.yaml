@@ -1,0 +1,49 @@
+apiVersion: v1
+entries:
+  bayplan:
+  - annotations:
+      artifacthub.io/category: monitoring-logging
+      artifacthub.io/containsSecurityUpdates: "false"
+      artifacthub.io/images: |
+        - name: bayplan
+          image: ghcr.io/bayplan/bayplan:0.1.0
+        - name: bayplan-agent
+          image: ghcr.io/bayplan/bayplan-agent:0.1.0
+        - name: postgres
+          image: docker.io/library/postgres:18.6-alpine3.24
+      artifacthub.io/license: Apache-2.0
+      artifacthub.io/links: |
+        - name: Website
+          url: https://bayplan.io
+        - name: Deployment guide
+          url: https://github.com/bayplan/bayplan/blob/main/deploy/README.md
+        - name: Changelog
+          url: https://github.com/bayplan/bayplan/blob/main/CHANGELOG.md
+        - name: Report a vulnerability
+          url: https://github.com/bayplan/bayplan/security/advisories/new
+      artifacthub.io/prerelease: "false"
+    apiVersion: v2
+    appVersion: 0.1.0
+    created: "2026-10-26T19:58:25.726633699Z"
+    description: Lightweight, self-hosted multi-cluster Kubernetes management. One
+      binary (Go + React) plus Postgres.
+    digest: 680094d10f77dab0ff08f360768ac481b42c098681f58f7ad2698d5de1912541
+    home: https://github.com/bayplan/bayplan
+    icon: https://raw.githubusercontent.com/bayplan/bayplan/main/docs/brand/bayplan-icon.svg
+    keywords:
+    - kubernetes
+    - multi-cluster
+    - dashboard
+    - helm
+    - gitops
+    maintainers:
+    - name: The Bayplan Authors
+      url: https://github.com/bayplan
+    name: bayplan
+    sources:
+    - https://github.com/bayplan/bayplan
+    type: application
+    urls:
+    - https://github.com/bayplan/bayplan/releases/download/v0.1.0/bayplan-0.1.0.tgz
+    version: 0.1.0
+generated: "2026-10-26T19:58:25.723013584Z"
