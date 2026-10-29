@@ -3,6 +3,56 @@ entries:
   bayplan:
   - annotations:
       artifacthub.io/category: monitoring-logging
+      artifacthub.io/changes: |
+        - kind: fixed
+          description: Closing the AI assistant panel no longer leaves the page blank.
+        - kind: security
+          description: Temporary image-scan exception (until 2026-11-30) for CVE-2026-116587 in the bundled Trivy binary, pending an upstream release with go-jose v4.1.6.
+      artifacthub.io/containsSecurityUpdates: "false"
+      artifacthub.io/images: |
+        - name: bayplan
+          image: ghcr.io/bayplan/bayplan:0.1.1
+        - name: bayplan-agent
+          image: ghcr.io/bayplan/bayplan-agent:0.1.1
+        - name: postgres
+          image: docker.io/library/postgres:18.6-alpine3.24
+      artifacthub.io/license: Apache-2.0
+      artifacthub.io/links: |
+        - name: Website
+          url: https://bayplan.io
+        - name: Deployment guide
+          url: https://github.com/bayplan/bayplan/blob/main/deploy/README.md
+        - name: Changelog
+          url: https://github.com/bayplan/bayplan/blob/main/CHANGELOG.md
+        - name: Report a vulnerability
+          url: https://github.com/bayplan/bayplan/security/advisories/new
+      artifacthub.io/prerelease: "false"
+    apiVersion: v2
+    appVersion: 0.1.1
+    created: "2026-10-29T14:25:18.724288409Z"
+    description: Lightweight, self-hosted multi-cluster Kubernetes management. One
+      binary (Go + React) plus Postgres.
+    digest: 0435e071aed9933c5eb58859bd6f516cafd4a4bff104ee188e489820ad134aed
+    home: https://github.com/bayplan/bayplan
+    icon: https://raw.githubusercontent.com/bayplan/bayplan/main/docs/brand/bayplan-icon.svg
+    keywords:
+    - kubernetes
+    - multi-cluster
+    - dashboard
+    - helm
+    - gitops
+    maintainers:
+    - name: The Bayplan Authors
+      url: https://github.com/bayplan
+    name: bayplan
+    sources:
+    - https://github.com/bayplan/bayplan
+    type: application
+    urls:
+    - https://github.com/bayplan/bayplan/releases/download/v0.1.1/bayplan-0.1.1.tgz
+    version: 0.1.1
+  - annotations:
+      artifacthub.io/category: monitoring-logging
       artifacthub.io/containsSecurityUpdates: "false"
       artifacthub.io/images: |
         - name: bayplan
@@ -46,4 +96,4 @@ entries:
     urls:
     - https://github.com/bayplan/bayplan/releases/download/v0.1.0/bayplan-0.1.0.tgz
     version: 0.1.0
-generated: "2026-10-26T19:58:25.723013584Z"
+generated: "2026-10-29T14:25:18.723117094Z"
