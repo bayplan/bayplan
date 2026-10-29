@@ -10,6 +10,11 @@ All published versions are listed here. The format follows
 
 - Closing the AI assistant panel no longer leaves the page blank.
 
+### Security
+
+- Image scan: temporary exception (until 2026-11-30) for CVE-2026-116587 in the
+  bundled Trivy binary, pending an upstream release with go-jose v4.1.6.
+
 ## [0.1.0] - 2026-10-26
 
 ### Added
