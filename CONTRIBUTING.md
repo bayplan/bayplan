@@ -70,5 +70,8 @@ however small, goes through a branch and a pull request.
 Releases are cut from `main` by a maintainer: the `[Unreleased]` section of `CHANGELOG.md` is
 renamed to the version (in a PR like any other), and once merged a signed tag `vX.Y.Z` is pushed
 on that commit. The tag is what publishes: CI builds and signs the images, the chart and the
-SBOM and creates the GitHub release. A security fix for the latest version is released as a
-patch (`vX.Y.Z+1`) the same way.
+SBOM and creates the GitHub release, whose notes are that version's `CHANGELOG.md` section.
+Before publishing anything, CI checks that the tag matches `version` and `appVersion` in
+`deploy/helm/bayplan/Chart.yaml` and that `CHANGELOG.md` has its section; if not, nothing is
+published: fix it, delete the tag and push it again. A security fix for the latest version is
+released as a patch (`vX.Y.Z+1`) the same way.
