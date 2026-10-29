@@ -2,8 +2,8 @@ apiVersion: v2
 name: bayplan
 description: Lightweight, self-hosted multi-cluster Kubernetes management. One binary (Go + React) plus Postgres.
 type: application
-version: 0.1.0
-appVersion: "0.1.0"
+version: 0.1.1
+appVersion: "0.1.1"
 keywords: [kubernetes, multi-cluster, dashboard, helm, gitops]
 home: https://github.com/bayplan/bayplan
 sources:
@@ -22,11 +22,16 @@ annotations:
   artifacthub.io/containsSecurityUpdates: "false"
   artifacthub.io/images: |
     - name: bayplan
-      image: ghcr.io/bayplan/bayplan:0.1.0
+      image: ghcr.io/bayplan/bayplan:0.1.1
     - name: bayplan-agent
-      image: ghcr.io/bayplan/bayplan-agent:0.1.0
+      image: ghcr.io/bayplan/bayplan-agent:0.1.1
     - name: postgres
       image: docker.io/library/postgres:18.6-alpine3.24
+  artifacthub.io/changes: |
+    - kind: fixed
+      description: Closing the AI assistant panel no longer leaves the page blank.
+    - kind: security
+      description: Temporary image-scan exception (until 2026-11-30) for CVE-2026-116587 in the bundled Trivy binary, pending an upstream release with go-jose v4.1.6.
   artifacthub.io/links: |
     - name: Website
       url: https://bayplan.io
