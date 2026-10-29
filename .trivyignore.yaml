@@ -30,3 +30,11 @@ vulnerabilities:
     paths: [usr/local/bin/kubectl]
     statement: Upstream kubectl not rebuilt yet; latest release pinned.
     expired_at: 2026-11-30
+  # go-jose v4.1.5 (DoS parsing JWKs with RSA keys) inside Trivy v0.76.1, the
+  # latest release; upstream main already moved to v4.1.6 but no release
+  # carries it yet. Bayplan's own binary already uses v4.1.6. Remove when
+  # Trivy v0.76.2/v0.77.0 is out and bump TRIVY_VERSION in deploy/Containerfile.
+  - id: CVE-2026-116587
+    paths: [usr/local/bin/trivy]
+    statement: Upstream Trivy not released with go-jose v4.1.6 yet; latest release pinned.
+    expired_at: 2026-11-30
