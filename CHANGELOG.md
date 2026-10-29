@@ -6,6 +6,10 @@ All published versions are listed here. The format follows
 
 ## [Unreleased]
 
+### Fixed
+
+- Closing the AI assistant panel no longer leaves the page blank.
+
 ## [0.1.0] - 2026-10-26
 
 ### Added

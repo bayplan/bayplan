@@ -75,7 +75,11 @@ export function AssistantPanel({ clusterId, namespaces, onClose }: { clusterId?:
     commitHeight(clamp(height + (e.key === 'ArrowUp' ? 32 : -32)))
   }
 
-  useEffect(() => bottom.current?.scrollIntoView({ block: 'end' }), [turns])
+  // Braces on purpose: recent browsers return a Promise from scrollIntoView,
+  // and React would call it as the cleanup on unmount (blank page on close).
+  useEffect(() => {
+    bottom.current?.scrollIntoView({ block: 'end' })
+  }, [turns])
   useEffect(() => () => abort.current?.abort(), [])
 
   const update = (fn: (turn: Turn) => Turn) => setTurns((all) => [...all.slice(0, -1), fn(all[all.length - 1])])
