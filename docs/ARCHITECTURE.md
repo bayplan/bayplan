@@ -281,7 +281,9 @@ the code reaches —, `npm audit --omit=dev --audit-level=high`, and the `image-
 both images, HIGH/CRITICAL with a fix block `images`; gitleaks over the whole history with
 `.gitleaks.toml`; and a `third-party` job that fails if `THIRD_PARTY_NOTICES.md` is not what `make
 third-party` generates, so run it whenever a dependency moves; the chart is linted read-only and only
-`chart-publish`, on `v*` tags, gets `packages`/`id-token` write); and the weekly `security-scan` workflow
+`chart-publish`, on `v*` tags, gets `packages`/`id-token` write; on those tags `release-check`
+gates every publishing job: the tag must match `version`/`appVersion` in `Chart.yaml` and have
+its `CHANGELOG.md` section, which becomes the release notes); and the weekly `security-scan` workflow
 (`scripts/security-scan.sh`, also `make audit`) over the **published** `latest`/`main`, which
 opens or closes a `security` issue and **never republishes** by itself. Base images and tools
 carry **exact** versions (a floating `golang:1.26` once built with a cached 1.26.5); kubectl and

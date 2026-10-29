@@ -125,13 +125,38 @@ jobs:
           persist-credentials: false
       - run: helm lint deploy/helm/bayplan
 
+  release-check:
+    # On v* tags, before anything is published: the tag must match the chart's
+    # version and appVersion and have its CHANGELOG.md section (the release
+    # notes). A mismatch stops the release with nothing public; fix it, delete
+    # the tag and push it again. On main and PRs it passes without checking, so
+    # the publishing jobs can depend on it.
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+        if: startsWith(github.ref, 'refs/tags/v')
+        with:
+          persist-credentials: false
+      - if: startsWith(github.ref, 'refs/tags/v')
+        run: |
+          version="${GITHUB_REF_NAME#v}"
+          chart=deploy/helm/bayplan/Chart.yaml
+          ok=true
+          grep -qxF "version: ${version}" "$chart" ||
+            { echo "::error file=${chart}::version is not ${version}"; ok=false; }
+          grep -qxF "appVersion: \"${version}\"" "$chart" ||
+            { echo "::error file=${chart}::appVersion is not \"${version}\""; ok=false; }
+          grep -q "^## \[${version//./\\.}\]" CHANGELOG.md ||
+            { echo "::error file=CHANGELOG.md::no [${version}] section"; ok=false; }
+          $ok
+
   chart-publish:
     # On v* tags: packages the chart with the tag's version and publishes it as
     # an OCI artifact to GHCR, next to the images:
     # `helm install bayplan oci://ghcr.io/<owner>/charts/bayplan`. Signed with
     # cosign like the images.
     if: startsWith(github.ref, 'refs/tags/v')
-    needs: [chart]
+    needs: [chart, release-check]
     runs-on: ubuntu-latest
     permissions:
       contents: read
@@ -219,7 +244,7 @@ jobs:
     # repository variable DOCKERHUB_NAMESPACE and the secrets DOCKERHUB_USERNAME
     # and DOCKERHUB_TOKEN. Without them only GHCR is published.
     if: github.event_name == 'push'
-    needs: [backend, frontend, image-scan]
+    needs: [backend, frontend, image-scan, release-check]
     runs-on: ubuntu-latest
     permissions:
       contents: read
@@ -342,8 +367,8 @@ jobs:
           if-no-files-found: error
 
   release:
-    # Creates the GitHub release with generated notes and attaches the SBOM and the
-    # third-party notices. It is the only job with write permission on contents, and only gh runs in it.
+    # Creates the GitHub release with the version's CHANGELOG.md section as notes and attaches
+    # the SBOM and the third-party notices. It is the only job with write permission on contents, and only gh runs in it.
     if: startsWith(github.ref, 'refs/tags/v')
     # third-party: the release attaches THIRD_PARTY_NOTICES.md, which must
     # match what the binaries link.
@@ -364,8 +389,23 @@ jobs:
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
-          gh release create "$GITHUB_REF_NAME" --verify-tag --generate-notes \
-            --notes "Images (amd64 and arm64, signed with cosign): \`ghcr.io/${GITHUB_REPOSITORY}:${GITHUB_REF_NAME#v}\` and \`ghcr.io/${GITHUB_REPOSITORY}-agent:${GITHUB_REF_NAME#v}\`. Chart: \`oci://ghcr.io/${GITHUB_REPOSITORY_OWNER}/charts/bayplan\` version ${GITHUB_REF_NAME#v}. Classic Helm repo: \`helm repo add bayplan https://${GITHUB_REPOSITORY_OWNER}.github.io/${GITHUB_REPOSITORY#*/}\`. Air-gapped installs: bayplan-images.txt and deploy/airgap/mirror.sh. Apache 2.0 license; third-party notices in THIRD_PARTY_NOTICES.md." \
+          version="${GITHUB_REF_NAME#v}"
+          {
+            echo "Images (amd64 and arm64, signed with cosign): \`ghcr.io/${GITHUB_REPOSITORY}:${version}\` and \`ghcr.io/${GITHUB_REPOSITORY}-agent:${version}\`. Chart: \`oci://ghcr.io/${GITHUB_REPOSITORY_OWNER}/charts/bayplan\` version ${version}. Classic Helm repo: \`helm repo add bayplan https://${GITHUB_REPOSITORY_OWNER}.github.io/${GITHUB_REPOSITORY#*/}\`. Air-gapped installs: bayplan-images.txt and deploy/airgap/mirror.sh. Apache 2.0 license; third-party notices in THIRD_PARTY_NOTICES.md."
+            echo
+            # The "## [X.Y.Z]" section, with its "###" headings one level up.
+            awk -v v="$version" '$0 ~ "^## \\[" {f = index($0, "## [" v "]") == 1; next} f' CHANGELOG.md |
+              sed -e 's/^### /## /' -e '/./,$!d'
+            echo
+            # Compared with the previous release, which is still "latest" until this one is created.
+            if prev=$(gh api "repos/${GITHUB_REPOSITORY}/releases/latest" --jq .tag_name 2>/dev/null); then
+              echo "**Full Changelog**: https://github.com/${GITHUB_REPOSITORY}/compare/${prev}...${GITHUB_REF_NAME}"
+            else
+              echo "**Full Changelog**: https://github.com/${GITHUB_REPOSITORY}/commits/${GITHUB_REF_NAME}"
+            fi
+          } > notes.md
+          # release-check already made sure the section exists.
+          gh release create "$GITHUB_REF_NAME" --verify-tag --notes-file notes.md \
             "bayplan-${GITHUB_REF_NAME}.sbom.cdx.json" bayplan-images.txt THIRD_PARTY_NOTICES.md
 
   helm-repo:
