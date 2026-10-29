@@ -6,6 +6,10 @@ All published versions are listed here. The format follows
 
 ## [Unreleased]
 
+### Fixed
+
+- Closing the AI assistant panel no longer leaves the page blank.
+
 ### Security
 
 - Image scan: temporary exception (until 2026-11-30) for CVE-2026-116587 in the
