@@ -6,6 +6,8 @@ All published versions are listed here. The format follows
 
 ## [Unreleased]
 
+## [0.1.2] - 2026-11-05
+
 ### Security
 
 - Frontend: follow-redirects 1.16.2 (GHSA-mrwp-f3q8-3g9p).
