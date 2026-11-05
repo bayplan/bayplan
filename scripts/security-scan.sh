@@ -32,15 +32,24 @@ if [ ! -d backend/internal/web/dist ]; then
 fi
 
 section "Go code (govulncheck)"
-# `go run pkg@version` picks its toolchain from the tool, not from go.mod: on
+# `go install pkg@version` picks its toolchain from the tool, not from go.mod: on
 # a machine whose system Go is older than the module's, govulncheck would be
 # built with a Go that cannot load this code and the report would be empty.
-# The toolchain the module asks for is forced, and a govulncheck that could not
-# run (any exit code other than 0 = clean, 3 = vulnerabilities found) is
-# reported as such instead of passing as "something has a fix".
-GOVULN_TOOLCHAIN="go$(sed -n 's/^toolchain go//p; s/^go //p' backend/go.mod | head -1)"
+# The toolchain is the one the image is built with (deploy/Containerfile), so
+# the standard library findings are those of the Go we ship. The go.mod line is
+# only a minimum: forcing it (an older patch) reported stdlib bugs that the
+# shipped patch already fixes.
+GOVULN_TOOLCHAIN="go$(sed -n 's|^FROM .*docker.io/golang:\([0-9.]*\)-.*|\1|p' deploy/Containerfile | head -1)"
+[ "$GOVULN_TOOLCHAIN" != go ] || { echo "golang image not found in deploy/Containerfile" >&2; exit 1; }
+# Installed and run as a binary, not with `go run`: `go run` turns any non-zero
+# exit into 1, which hid exit 3 (vulnerabilities found) behind "could not run".
+# A govulncheck that could not run (any exit code other than 0 = clean,
+# 3 = vulnerabilities found) is reported as such instead of passing as
+# "something has a fix".
+govuln_bin="$(mktemp -d)"
 set +e
-(cd backend && GOTOOLCHAIN="$GOVULN_TOOLCHAIN" go run "golang.org/x/vuln/cmd/govulncheck@${GOVULNCHECK_VERSION}" ./... >/tmp/govulncheck.txt 2>&1)
+GOTOOLCHAIN="$GOVULN_TOOLCHAIN" GOBIN="$govuln_bin" go install "golang.org/x/vuln/cmd/govulncheck@${GOVULNCHECK_VERSION}" >/tmp/govulncheck.txt 2>&1 &&
+  (cd backend && GOTOOLCHAIN="$GOVULN_TOOLCHAIN" "$govuln_bin/govulncheck" ./... >/tmp/govulncheck.txt 2>&1)
 govuln_rc=$?
 set -e
 case $govuln_rc in

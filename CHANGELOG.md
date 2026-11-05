@@ -6,6 +6,13 @@ All published versions are listed here. The format follows
 
 ## [Unreleased]
 
+### Security
+
+- Frontend: follow-redirects 1.16.2 (GHSA-mrwp-f3q8-3g9p).
+- Backend: Go dependencies updated (Kubernetes client 0.37.2, AWS SDK); govulncheck reports no
+  reachable vulnerabilities.
+- Images: Node 24.22.2 build stage and kubectl v1.37.2 for the web shell.
+
 ## [0.1.1] - 2026-10-29
 
 ### Fixed
