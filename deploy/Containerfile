@@ -12,7 +12,7 @@
 # issue the weekly security-scan workflow opens.
 
 # --- Stage 1: frontend build ---
-FROM --platform=$BUILDPLATFORM docker.io/node:24.22.1-alpine3.24 AS frontend-build
+FROM --platform=$BUILDPLATFORM docker.io/node:24.22.2-alpine3.24 AS frontend-build
 WORKDIR /src/frontend
 COPY frontend/package*.json ./
 RUN npm ci
@@ -41,7 +41,7 @@ RUN CGO_ENABLED=0 GOOS=linux GOARCH=${TARGETARCH} go build -trimpath -ldflags="-
 # checksum: the binary runs on the server with the user's identity.
 FROM --platform=$BUILDPLATFORM docker.io/alpine:3.24.3 AS kubectl-dl
 ARG TARGETARCH=amd64
-ARG KUBECTL_VERSION=v1.37.1
+ARG KUBECTL_VERSION=v1.37.2
 RUN apk add --no-cache curl && \
     curl -fsSLo /kubectl "https://dl.k8s.io/release/${KUBECTL_VERSION}/bin/linux/${TARGETARCH}/kubectl" && \
     curl -fsSLo /kubectl.sha256 "https://dl.k8s.io/release/${KUBECTL_VERSION}/bin/linux/${TARGETARCH}/kubectl.sha256" && \
