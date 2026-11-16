@@ -12,7 +12,7 @@
 # issue the weekly security-scan workflow opens.
 
 # --- Stage 1: frontend build ---
-FROM --platform=$BUILDPLATFORM docker.io/node:24.22.2-alpine3.24 AS frontend-build
+FROM --platform=$BUILDPLATFORM docker.io/node:24.22.3-alpine3.24 AS frontend-build
 WORKDIR /src/frontend
 COPY frontend/package*.json ./
 RUN npm ci
@@ -39,7 +39,7 @@ RUN CGO_ENABLED=0 GOOS=linux GOARCH=${TARGETARCH} go build -trimpath -ldflags="-
 # --- Stage 3: minimal final image ---
 # kubectl for the web shell (internal/kubectl). Pinned version and verified
 # checksum: the binary runs on the server with the user's identity.
-FROM --platform=$BUILDPLATFORM docker.io/alpine:3.24.3 AS kubectl-dl
+FROM --platform=$BUILDPLATFORM docker.io/alpine:3.24.4 AS kubectl-dl
 ARG TARGETARCH=amd64
 ARG KUBECTL_VERSION=v1.37.2
 RUN apk add --no-cache curl && \
@@ -49,7 +49,7 @@ RUN apk add --no-cache curl && \
 
 # Trivy for image scanning (internal/scan). Pinned version and checksum
 # verified against the release's checksums.txt.
-FROM --platform=$BUILDPLATFORM docker.io/alpine:3.24.3 AS trivy-dl
+FROM --platform=$BUILDPLATFORM docker.io/alpine:3.24.4 AS trivy-dl
 ARG TARGETARCH=amd64
 ARG TRIVY_VERSION=0.76.1
 RUN apk add --no-cache curl && \
@@ -61,7 +61,7 @@ RUN apk add --no-cache curl && \
 
 # Alpine 3.24 is supported until May 2028; bump it before then (3.20, the
 # previous base, went EOL in April 2026).
-FROM docker.io/alpine:3.24.3
+FROM docker.io/alpine:3.24.4
 LABEL org.opencontainers.image.title="Bayplan" \
       org.opencontainers.image.licenses="Apache-2.0" \
       org.opencontainers.image.source="https://github.com/bayplan/bayplan"
