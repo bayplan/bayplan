@@ -5,6 +5,60 @@ entries:
       artifacthub.io/category: monitoring-logging
       artifacthub.io/changes: |
         - kind: security
+          description: "Backend and agent: golang.org/x/net 0.62.0 (CVE-2026-78661) and Go dependencies updated (go-jose 4.1.9, pgx 5.13, goose 3.30, x/crypto 0.59, AWS SDK)."
+        - kind: security
+          description: "Frontend: npm dependencies updated (axios 1.21.1, vite 8.3.8 and others)."
+        - kind: security
+          description: "Images: Go 1.27.4 build stage (security fixes in net/http, the compiler and the linker), Trivy 0.76.2 (drops the CVE-2026-116587 exception), Node 24.22.3 build stage and Alpine 3.24.4."
+        - kind: security
+          description: "Image scan: the exceptions for the bundled kubectl v1.37.2 are reduced to the three CVEs that still apply and extended until 2026-12-31."
+      artifacthub.io/containsSecurityUpdates: "true"
+      artifacthub.io/images: |
+        - name: bayplan
+          image: ghcr.io/bayplan/bayplan:0.1.3
+        - name: bayplan-agent
+          image: ghcr.io/bayplan/bayplan-agent:0.1.3
+        - name: postgres
+          image: docker.io/library/postgres:18.6-alpine3.24
+      artifacthub.io/license: Apache-2.0
+      artifacthub.io/links: |
+        - name: Website
+          url: https://bayplan.io
+        - name: Deployment guide
+          url: https://github.com/bayplan/bayplan/blob/main/deploy/README.md
+        - name: Changelog
+          url: https://github.com/bayplan/bayplan/blob/main/CHANGELOG.md
+        - name: Report a vulnerability
+          url: https://github.com/bayplan/bayplan/security/advisories/new
+      artifacthub.io/prerelease: "false"
+    apiVersion: v2
+    appVersion: 0.1.3
+    created: "2026-11-20T14:22:28.464131754Z"
+    description: Lightweight, self-hosted multi-cluster Kubernetes management. One
+      binary (Go + React) plus Postgres.
+    digest: 203be2d937ad2ef4e58b7d854f007c1d3e3ea26c91b13b2acdc3dfd968763fb3
+    home: https://github.com/bayplan/bayplan
+    icon: https://raw.githubusercontent.com/bayplan/bayplan/main/docs/brand/bayplan-icon.svg
+    keywords:
+    - kubernetes
+    - multi-cluster
+    - dashboard
+    - helm
+    - gitops
+    maintainers:
+    - name: The Bayplan Authors
+      url: https://github.com/bayplan
+    name: bayplan
+    sources:
+    - https://github.com/bayplan/bayplan
+    type: application
+    urls:
+    - https://github.com/bayplan/bayplan/releases/download/v0.1.3/bayplan-0.1.3.tgz
+    version: 0.1.3
+  - annotations:
+      artifacthub.io/category: monitoring-logging
+      artifacthub.io/changes: |
+        - kind: security
           description: "Frontend: follow-redirects 1.16.2 (GHSA-mrwp-f3q8-3g9p)."
         - kind: security
           description: "Backend: Go dependencies updated (Kubernetes client 0.37.2, AWS SDK); govulncheck reports no reachable vulnerabilities."
@@ -148,4 +202,4 @@ entries:
     urls:
     - https://github.com/bayplan/bayplan/releases/download/v0.1.0/bayplan-0.1.0.tgz
     version: 0.1.0
-generated: "2026-11-05T13:05:15.040584625Z"
+generated: "2026-11-20T14:22:28.463014874Z"
