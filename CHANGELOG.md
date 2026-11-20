@@ -6,6 +6,8 @@ All published versions are listed here. The format follows
 
 ## [Unreleased]
 
+## [0.1.3] - 2026-11-20
+
 ### Security
 
 - Backend and agent: golang.org/x/net 0.62.0 (CVE-2026-78661) and Go dependencies updated
