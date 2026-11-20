@@ -11,7 +11,7 @@ ARG TARGETARCH=amd64
 RUN rm -rf internal/web/dist && mkdir -p internal/web/dist && \
     CGO_ENABLED=0 GOOS=linux GOARCH=${TARGETARCH} go build -trimpath -ldflags="-s -w -X main.version=${VERSION}" -o /out/bayplan-agent ./cmd/agent
 
-FROM docker.io/alpine:3.24.3
+FROM docker.io/alpine:3.24.4
 LABEL org.opencontainers.image.title="Bayplan agent" \
       org.opencontainers.image.licenses="Apache-2.0" \
       org.opencontainers.image.source="https://github.com/bayplan/bayplan"
