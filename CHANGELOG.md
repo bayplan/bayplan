@@ -6,13 +6,15 @@ All published versions are listed here. The format follows
 
 ## [Unreleased]
 
+## [0.1.3] - 2026-11-20
+
 ### Security
 
 - Backend and agent: golang.org/x/net 0.62.0 (CVE-2026-78661) and Go dependencies updated
   (go-jose 4.1.9, pgx 5.13, goose 3.30, x/crypto 0.59, AWS SDK).
 - Frontend: npm dependencies updated (axios 1.21.1, vite 8.3.8 and others).
-- Images: Trivy 0.76.2 (drops the CVE-2026-116587 exception), Node 24.22.3 build stage and
-  Alpine 3.24.4.
+- Images: Go 1.27.4 build stage (security fixes in net/http, the compiler and the linker),
+  Trivy 0.76.2 (drops the CVE-2026-116587 exception), Node 24.22.3 build stage and Alpine 3.24.4.
 - Image scan: the exceptions for the bundled kubectl v1.37.2 (latest release, built upstream
   with x/net 0.57 and x/text 0.40) are reduced to the three CVEs that still apply and extended
   until 2026-12-31.
