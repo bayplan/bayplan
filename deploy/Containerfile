@@ -25,7 +25,7 @@ RUN npm run build
 # silently downloads the right toolchain from proxy.golang.org, so the image can
 # no longer be built without internet access. Keep it aligned with the Go
 # version used in CI.
-FROM --platform=$BUILDPLATFORM docker.io/golang:1.27.3-alpine3.24 AS backend-build
+FROM --platform=$BUILDPLATFORM docker.io/golang:1.27.4-alpine3.24 AS backend-build
 WORKDIR /src/backend
 COPY backend/go.mod backend/go.sum ./
 RUN go mod download
