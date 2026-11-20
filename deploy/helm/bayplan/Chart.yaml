@@ -33,7 +33,7 @@ annotations:
     - kind: security
       description: "Frontend: npm dependencies updated (axios 1.21.1, vite 8.3.8 and others)."
     - kind: security
-      description: "Images: Trivy 0.76.2 (drops the CVE-2026-116587 exception), Node 24.22.3 build stage and Alpine 3.24.4."
+      description: "Images: Go 1.27.4 build stage (security fixes in net/http, the compiler and the linker), Trivy 0.76.2 (drops the CVE-2026-116587 exception), Node 24.22.3 build stage and Alpine 3.24.4."
     - kind: security
       description: "Image scan: the exceptions for the bundled kubectl v1.37.2 are reduced to the three CVEs that still apply and extended until 2026-12-31."
   artifacthub.io/links: |
